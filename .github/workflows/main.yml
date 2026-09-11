@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-apk:
-    name: Generate & Build ApexBrowser
+    name: Generate & Build ApexBrowser (Stealth Edition)
     runs-on: ubuntu-latest
 
     steps:
@@ -34,15 +34,12 @@ jobs:
         run: |
           set -e
 
-          # إنشاء مجلدات المشروع
           mkdir -p gradle/wrapper
           mkdir -p app/src/main/java/com/apex/browser
           mkdir -p app/src/main/res/values
 
-          # كتابة local.properties
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-          # كتابة gradle.properties
           cat << 'EOF' > gradle.properties
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           android.useAndroidX=true
@@ -50,7 +47,6 @@ jobs:
           kotlin.code.style=official
           EOF
 
-          # كتابة settings.gradle.kts
           cat << 'EOF' > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -70,7 +66,6 @@ jobs:
           include(":app")
           EOF
 
-          # كتابة build.gradle.kts للجذر
           cat << 'EOF' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.4.1" apply false
@@ -78,7 +73,6 @@ jobs:
           }
           EOF
 
-          # كتابة app/build.gradle.kts
           cat << 'EOF' > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -93,8 +87,8 @@ jobs:
                   applicationId = "com.apex.browser"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
+                  versionCode = 2
+                  versionName = "1.1"
 
                   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
                   vectorDrawables {
@@ -155,20 +149,20 @@ jobs:
               implementation("androidx.compose.ui:ui-tooling-preview")
               implementation("androidx.compose.material3:material3")
               implementation("androidx.compose.material:material-icons-extended")
+
+              // مكتبة webkit للتحكم بالـ Headers المتقدمة وإخفاء X-Requested-With
+              implementation("androidx.webkit:webkit:1.10.0")
           }
           EOF
 
-          # ملف Proguard
           touch app/proguard-rules.pro
 
-          # كتابة strings.xml
           cat << 'EOF' > app/src/main/res/values/strings.xml
           <resources>
               <string name="app_name">ApexBrowser</string>
           </resources>
           EOF
 
-          # كتابة AndroidManifest.xml
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -196,7 +190,6 @@ jobs:
           </manifest>
           EOF
 
-          # كتابة MainActivity.kt مع معالجة كافة الـ Imports وحل مشكلة ViewGroup
           cat << 'EOF' > app/src/main/java/com/apex/browser/MainActivity.kt
           package com.apex.browser
 
@@ -255,6 +248,8 @@ jobs:
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
           import androidx.compose.ui.viewinterop.AndroidView
+          import androidx.webkit.WebSettingsCompat
+          import androidx.webkit.WebViewFeature
           import kotlinx.coroutines.delay
           import kotlinx.coroutines.isActive
           import java.net.URLEncoder
@@ -286,38 +281,28 @@ jobs:
 
               var webViewInstance by remember { mutableStateOf<WebView?>(null) }
 
-              // عناصر HUD العائمة
               var hudExpanded by remember { mutableStateOf(false) }
               var bubbleOffset by remember { mutableStateOf(Offset(40f, 250f)) }
 
-              // أداة التحديث التلقائي
               var autoRefreshEnabled by remember { mutableStateOf(false) }
-              var autoRefreshInterval by remember { mutableStateOf(10) }
-              var countdownSeconds by remember { mutableStateOf(10) }
+              var autoRefreshInterval by remember { mutableStateOf(15) }
+              var countdownSeconds by remember { mutableStateOf(15) }
 
-              // أداة النقر التلقائي
               var autoClickerEnabled by remember { mutableStateOf(false) }
               var clickIntervalMs by remember { mutableStateOf(1000L) }
               var reticleOffset by remember { mutableStateOf(Offset(250f, 400f)) }
               var isPulsing by remember { mutableStateOf(false) }
 
-              val desktopUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-              val defaultMobileUA = remember {
-                  try {
-                      WebSettings.getDefaultUserAgent(context)
-                  } catch (e: Exception) {
-                      "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
-                  }
-              }
+              // User-Agents حقيقية تماماً تحاكي متصفح Chrome الأصلي بدون علامات WebView
+              val cleanMobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+              val cleanDesktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-              // زر الرجوع الفعلي للنظام
               BackHandler(enabled = canGoBack) {
                   webViewInstance?.let {
                       if (it.canGoBack()) it.goBack()
                   }
               }
 
-              // دورة التحديث التلقائي
               LaunchedEffect(autoRefreshEnabled, autoRefreshInterval) {
                   if (autoRefreshEnabled) {
                       countdownSeconds = autoRefreshInterval
@@ -335,7 +320,6 @@ jobs:
                   }
               }
 
-              // إرسال أحداث النقر الحقيقي عبر MotionEvent
               LaunchedEffect(autoClickerEnabled, clickIntervalMs, reticleOffset) {
                   if (autoClickerEnabled) {
                       while (isActive && autoClickerEnabled) {
@@ -370,7 +354,7 @@ jobs:
 
               LaunchedEffect(isDesktopMode) {
                   webViewInstance?.let { wv ->
-                      wv.settings.userAgentString = if (isDesktopMode) desktopUA else defaultMobileUA
+                      wv.settings.userAgentString = if (isDesktopMode) cleanDesktopUA else cleanMobileUA
                       wv.settings.useWideViewPort = isDesktopMode
                       wv.reload()
                   }
@@ -400,7 +384,6 @@ jobs:
                       .background(Color(0xFF0F172A))
               ) {
                   Column(modifier = Modifier.fillMaxSize()) {
-                      // شريط الأدوات والتنقل العلوي
                       Surface(
                           color = Color(0xFF1E293B),
                           shadowElevation = 6.dp,
@@ -436,7 +419,6 @@ jobs:
                                       )
                                   }
 
-                                  // حقل إدخال الرابط والبحث
                                   Box(
                                       modifier = Modifier
                                           .weight(1f)
@@ -503,7 +485,6 @@ jobs:
                           }
                       }
 
-                      // محرك WebView
                       Box(
                           modifier = Modifier
                               .weight(1f)
@@ -517,6 +498,11 @@ jobs:
                                           ViewGroup.LayoutParams.MATCH_PARENT
                                       )
 
+                                      // 1. منع إرسال هيدر X-Requested-With نهائياً لجميع النطاقات
+                                      if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                                          WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+                                      }
+
                                       with(settings) {
                                           javaScriptEnabled = true
                                           domStorageEnabled = true
@@ -528,12 +514,30 @@ jobs:
                                           useWideViewPort = true
                                           loadWithOverviewMode = true
                                           cacheMode = WebSettings.LOAD_DEFAULT
-                                          userAgentString = defaultMobileUA
+                                          userAgentString = cleanMobileUA
+                                          // تفعيل تخزين وتكامل الجلسات
+                                          allowFileAccess = true
+                                          allowContentAccess = true
                                       }
 
                                       val cookieManager = CookieManager.getInstance()
                                       cookieManager.setAcceptCookie(true)
                                       cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                                      // 2. سكربت Stealth لحذف خصائص كشف البوتات ومحاكاة Chrome الحقيقي
+                                      val stealthJs = """
+                                          (function() {
+                                              try {
+                                                  // حذف مؤشرات الويب درايفر والويب فيو
+                                                  delete Object.getPrototypeOf(navigator).webdriver;
+                                                  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                                                  window.chrome = { runtime: {}, app: {}, loadTimes: function() {}, csi: function() {} };
+                                                  if (!window.navigator.languages || window.navigator.languages.length === 0) {
+                                                      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'fr'] });
+                                                  }
+                                              } catch (e) {}
+                                          })();
+                                      """.trimIndent()
 
                                       webViewClient = object : WebViewClient() {
                                           override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -547,6 +551,8 @@ jobs:
                                                   currentUrl = it
                                                   inputUrl = it
                                               }
+                                              // حقن السكربت بمجرد بدء تحميل الصفحة
+                                              evaluateJavascript(stealthJs, null)
                                           }
 
                                           override fun onPageFinished(view: WebView?, url: String?) {
@@ -555,6 +561,9 @@ jobs:
                                               canGoBack = canGoBack()
                                               canGoForward = canGoForward()
                                               pageTitle = view?.title ?: "ApexBrowser"
+                                              // إعادة التأكيد على السكربت عند انتهاء التحميل
+                                              evaluateJavascript(stealthJs, null)
+                                              cookieManager.flush()
                                           }
 
                                           override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
@@ -576,7 +585,6 @@ jobs:
                               modifier = Modifier.fillMaxSize()
                           )
 
-                          // مؤشر الاستهداف الطافي (Target Reticle)
                           if (autoClickerEnabled) {
                               Box(
                                   modifier = Modifier
@@ -620,7 +628,6 @@ jobs:
                       }
                   }
 
-                  // الزر العائم القابل للسحب (Draggable Bubble)
                   Box(
                       modifier = Modifier
                           .offset { IntOffset(bubbleOffset.x.roundToInt(), bubbleOffset.y.roundToInt()) }
@@ -654,7 +661,6 @@ jobs:
                       )
                   }
 
-                  // لوحة تحكم الأتمتة العائمة (Glassmorphic HUD)
                   AnimatedVisibility(
                       visible = hudExpanded,
                       enter = fadeIn(),
@@ -690,7 +696,6 @@ jobs:
                               HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
                               Spacer(modifier = Modifier.height(12.dp))
 
-                              // إعدادات التحديث التلقائي
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
                                   horizontalArrangement = Arrangement.SpaceBetween,
@@ -714,8 +719,8 @@ jobs:
                               Slider(
                                   value = autoRefreshInterval.toFloat(),
                                   onValueChange = { autoRefreshInterval = it.roundToInt() },
-                                  valueRange = 3f..60f,
-                                  steps = 57,
+                                  valueRange = 5f..60f,
+                                  steps = 55,
                                   enabled = autoRefreshEnabled
                               )
 
@@ -723,7 +728,6 @@ jobs:
                               HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
                               Spacer(modifier = Modifier.height(12.dp))
 
-                              // إعدادات النقر التلقائي
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
                                   horizontalArrangement = Arrangement.SpaceBetween,
@@ -750,8 +754,8 @@ jobs:
                               Slider(
                                   value = clickIntervalMs.toFloat(),
                                   onValueChange = { clickIntervalMs = it.toLong() },
-                                  valueRange = 100f..3000f,
-                                  steps = 29,
+                                  valueRange = 200f..4000f,
+                                  steps = 38,
                                   enabled = autoClickerEnabled
                               )
                           }
@@ -773,6 +777,6 @@ jobs:
       - name: Upload ApexBrowser APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ApexBrowser-Debug-v1.0
+          name: ApexBrowser-Stealth-v1.1
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
