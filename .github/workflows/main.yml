@@ -1,54 +1,56 @@
-name: Build SafePosture APK
+name: Build ApexBrowser APK
 
 on:
   push:
     branches: [ "**" ]
   pull_request:
-    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-apk:
+    name: Generate & Build ApexBrowser
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Temurin JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
 
-      - name: Setup Android SDK Environment & Licenses
+      - name: Accept Android SDK Licenses
         run: |
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
           yes | sdkmanager --licenses || true
 
-      - name: Generate Project Files
+      - name: Generate Android Project Structure & Source Code
         run: |
-          echo "Generating Gradle configuration..."
-          
-          # 1. gradle.properties
+          set -e
+
+          # إنشاء مجلدات المشروع الأساسية
+          mkdir -p gradle/wrapper
+          mkdir -p app/src/main/java/com/apex/browser
+          mkdir -p app/src/main/res/values
+
+          # كتابة local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+          # كتابة gradle.properties
           cat << 'EOF' > gradle.properties
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           android.useAndroidX=true
           android.nonTransitiveRClass=true
+          kotlin.code.style=official
           EOF
 
-          # 2. local.properties
-          cat << EOF > local.properties
-          sdk.dir=$ANDROID_HOME
-          EOF
-
-          # 3. settings.gradle.kts
+          # كتابة settings.gradle.kts
           cat << 'EOF' > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -64,11 +66,11 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "SafePosture"
+          rootProject.name = "ApexBrowser"
           include(":app")
           EOF
 
-          # 4. Root build.gradle.kts
+          # كتابة build.gradle.kts للجذر
           cat << 'EOF' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.4.1" apply false
@@ -76,8 +78,7 @@ jobs:
           }
           EOF
 
-          # 5. App module build.gradle.kts
-          mkdir -p app
+          # كتابة app/build.gradle.kts
           cat << 'EOF' > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -85,21 +86,29 @@ jobs:
           }
 
           android {
-              namespace = "com.safeposture.app"
+              namespace = "com.apex.browser"
               compileSdk = 34
 
               defaultConfig {
-                  applicationId = "com.safeposture.app"
+                  applicationId = "com.apex.browser"
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 1
                   versionName = "1.0"
+
+                  testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                  vectorDrawables {
+                      useSupportLibrary = true
+                  }
               }
 
               buildTypes {
                   release {
                       isMinifyEnabled = false
-                      signingConfig = signingConfigs.getByName("debug")
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
                   }
               }
 
@@ -120,6 +129,12 @@ jobs:
                   kotlinCompilerExtensionVersion = "1.5.11"
               }
 
+              packaging {
+                  resources {
+                      excludes += "/META-INF/{AL2.0,LGPL2.1}"
+                  }
+              }
+
               lint {
                   abortOnError = false
                   checkReleaseBuilds = false
@@ -129,823 +144,621 @@ jobs:
           dependencies {
               val composeBom = platform("androidx.compose:compose-bom:2024.02.00")
               implementation(composeBom)
+              androidTestImplementation(composeBom)
+
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+
               implementation("androidx.compose.ui:ui")
               implementation("androidx.compose.ui:ui-graphics")
               implementation("androidx.compose.ui:ui-tooling-preview")
               implementation("androidx.compose.material3:material3")
-              implementation("androidx.compose.material:material-icons-core")
-              implementation("androidx.activity:activity-compose:1.8.2")
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.compose.material:material-icons-extended")
           }
           EOF
 
-          # 6. AndroidManifest.xml
-          mkdir -p app/src/main
+          # إنشاء ملف proguard-rules.pro فارغ
+          touch app/proguard-rules.pro
+
+          # كتابة strings.xml
+          cat << 'EOF' > app/src/main/res/values/strings.xml
+          <resources>
+              <string name="app_name">ApexBrowser</string>
+          </resources>
+          EOF
+
+          # كتابة AndroidManifest.xml
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.VIBRATE" />
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
               <application
                   android:allowBackup="true"
-                  android:icon="@android:drawable/ic_dialog_info"
-                  android:label="SafePosture"
-                  android:roundIcon="@android:drawable/ic_dialog_info"
+                  android:label="@string/app_name"
                   android:supportsRtl="true"
+                  android:usesCleartextTraffic="true"
                   android:theme="@android:style/Theme.Material.NoActionBar">
-
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
-                      android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+                      android:configChanges="orientation|screenSize|keyboardHidden">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-
-                  <service
-                      android:name=".PostureService"
-                      android:enabled="true"
-                      android:exported="false"
-                      android:foregroundServiceType="dataSync" />
-
               </application>
+
           </manifest>
           EOF
 
-          # 7. Kotlin Source Files
-          mkdir -p app/src/main/java/com/safeposture/app
+          # كتابة الكود البرمجي الكامل لـ MainActivity.kt
+          cat << 'EOF' > app/src/main/java/com/apex/browser/MainActivity.kt
+          package com.apex.browser
 
-          # State Holder & Service
-          cat << 'EOF' > app/src/main/java/com/safeposture/app/PostureState.kt
-          package com.safeposture.app
-
-          import kotlinx.coroutines.flow.MutableStateFlow
-
-          object PostureState {
-              val currentPitch = MutableStateFlow(90f)
-              val isBadPosture = MutableStateFlow(false)
-              val isServiceRunning = MutableStateFlow(false)
-          }
-          EOF
-
-          cat << 'EOF' > app/src/main/java/com/safeposture/app/PostureService.kt
-          package com.safeposture.app
-
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.PendingIntent
-          import android.app.Service
-          import android.content.Context
-          import android.content.Intent
-          import android.content.pm.ServiceInfo
-          import android.hardware.Sensor
-          import android.hardware.SensorEvent
-          import android.hardware.SensorEventListener
-          import android.hardware.SensorManager
-          import android.media.AudioManager
-          import android.media.ToneGenerator
-          import android.os.Build
-          import android.os.IBinder
-          import android.os.VibrationEffect
-          import android.os.Vibrator
-          import android.os.VibratorManager
-          import androidx.core.app.NotificationCompat
-          import androidx.core.app.ServiceCompat
-          import kotlin.math.atan2
-          import kotlin.math.sqrt
-
-          class PostureService : Service(), SensorEventListener {
-
-              private lateinit var sensorManager: SensorManager
-              private var accelerometer: Sensor? = null
-              private var badPostureStartTime = 0L
-              private var isAlerting = false
-              private var toneGenerator: ToneGenerator? = null
-
-              private val channelId = "posture_monitor_channel"
-              private val notificationId = 1001
-
-              override fun onCreate() {
-                  super.onCreate()
-                  sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-                  accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-                  try {
-                      toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 80)
-                  } catch (e: Exception) {
-                      toneGenerator = null
-                  }
-                  createNotificationChannel()
-              }
-
-              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  val notification = createNotification("مراقبة الوضعية قيد العمل", "وضع الرقبة سليم حالياً", false)
-                  
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                      ServiceCompat.startForeground(
-                          this,
-                          notificationId,
-                          notification,
-                          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                      )
-                  } else {
-                      startForeground(notificationId, notification)
-                  }
-
-                  accelerometer?.let {
-                      sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
-                  }
-
-                  PostureState.isServiceRunning.value = true
-                  return START_STICKY
-              }
-
-              override fun onSensorChanged(event: SensorEvent?) {
-                  if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
-
-                  val x = event.values[0]
-                  val y = event.values[1]
-                  val z = event.values[2]
-
-                  // حساب زاوية ميلان الجهاز (Pitch Angle)
-                  val pitch = atan2(-y.toDouble(), sqrt((x * x + z * z).toDouble())) * (180.0 / Math.PI)
-                  val pitchAngle = (pitch + 90.0).toFloat().coerceIn(0f, 90f)
-
-                  PostureState.currentPitch.value = pitchAngle
-
-                  // إذا انحنى الهاتف أقل من 45 درجة (يعادل انحناء الرقبة للأسفل)
-                  val now = System.currentTimeMillis()
-                  if (pitchAngle < 45f) {
-                      if (badPostureStartTime == 0L) {
-                          badPostureStartTime = now
-                      } else if (now - badPostureStartTime >= 2000L && !isAlerting) {
-                          isAlerting = true
-                          PostureState.isBadPosture.value = true
-                          triggerAlert()
-                      }
-                  } else {
-                      badPostureStartTime = 0L
-                      if (isAlerting) {
-                          isAlerting = false
-                          PostureState.isBadPosture.value = false
-                          dismissAlertNotification()
-                      }
-                  }
-              }
-
-              private fun triggerAlert() {
-                  // تنبيه صوتي
-                  try {
-                      toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 400)
-                  } catch (e: Exception) {
-                      // Handled safely
-                  }
-
-                  // نبضات اهتزاز تحذيرية مزدوجة
-                  try {
-                      val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                          val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                          vibratorManager.defaultVibrator
-                      } else {
-                          @Suppress("DEPRECATION")
-                          getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                      }
-
-                      if (vibrator.hasVibrator()) {
-                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                              val pattern = longArrayOf(0, 180, 120, 250)
-                              val effect = VibrationEffect.createWaveform(pattern, -1)
-                              vibrator.vibrate(effect)
-                          } else {
-                              @Suppress("DEPRECATION")
-                              vibrator.vibrate(400)
-                          }
-                      }
-                  } catch (e: Exception) {
-                      // Handled safely
-                  }
-
-                  // إشعار منبثق فوري عالي الأهمية (Heads-Up Notification)
-                  val notification = createNotification("⚠️ تحذير انحناء الرقبة!", "ارفع رأسك واعتدل لحماية فقراتك العنقية", true)
-                  val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  manager.notify(notificationId, notification)
-              }
-
-              private fun dismissAlertNotification() {
-                  val notification = createNotification("مراقبة الوضعية قيد العمل", "وضعية ممتازة ومريحة للعمود الفقري", false)
-                  val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  manager.notify(notificationId, notification)
-              }
-
-              private fun createNotification(title: String, text: String, isHighAlert: Boolean): Notification {
-                  val intent = Intent(this, MainActivity::class.java).apply {
-                      flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                  }
-                  val pendingIntent = PendingIntent.getActivity(
-                      this,
-                      0,
-                      intent,
-                      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                  )
-
-                  val builder = NotificationCompat.Builder(this, channelId)
-                      .setSmallIcon(android.R.drawable.ic_dialog_alert)
-                      .setContentTitle(title)
-                      .setContentText(text)
-                      .setOngoing(true)
-                      .setContentIntent(pendingIntent)
-                      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-
-                  if (isHighAlert) {
-                      builder.setPriority(NotificationCompat.PRIORITY_HIGH)
-                             .setCategory(NotificationCompat.CATEGORY_ALARM)
-                             .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
-                  } else {
-                      builder.setPriority(NotificationCompat.PRIORITY_LOW)
-                  }
-
-                  return builder.build()
-              }
-
-              private fun createNotificationChannel() {
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val channel = NotificationChannel(
-                          channelId,
-                          "تنبيهات وضعية الرقبة",
-                          NotificationManager.IMPORTANCE_HIGH
-                      ).apply {
-                          description = "قناة إشعارات تنبيهات انحناء الرقبة الفورية"
-                          enableVibration(true)
-                      }
-                      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                      manager.createNotificationChannel(channel)
-                  }
-              }
-
-              override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-
-              override fun onDestroy() {
-                  super.onDestroy()
-                  sensorManager.unregisterListener(this)
-                  toneGenerator?.release()
-                  toneGenerator = null
-                  PostureState.isServiceRunning.value = false
-              }
-
-              override fun onBind(intent: Intent?): IBinder? = null
-          }
-          EOF
-
-          # MainActivity & UI
-          cat << 'EOF' > app/src/main/java/com/safeposture/app/MainActivity.kt
-          package com.safeposture.app
-
-          import android.Manifest
-          import android.content.Intent
-          import android.content.pm.PackageManager
-          import android.os.Build
+          import android.annotation.SuppressLint
+          import android.graphics.Bitmap
+          import android.net.http.SslError
           import android.os.Bundle
-          import android.view.WindowManager
+          import android.os.SystemClock
+          import android.view.MotionEvent
+          import android.view.View
+          import android.webkit.CookieManager
+          import android.webkit.SslErrorHandler
+          import android.webkit.WebChromeClient
+          import android.webkit.WebResourceRequest
+          import android.webkit.WebSettings
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
           import androidx.activity.ComponentActivity
-          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.BackHandler
           import androidx.activity.compose.setContent
-          import androidx.activity.result.contract.ActivityResultContracts
-          import androidx.compose.animation.animateColorAsState
-          import androidx.compose.animation.core.tween
-          import androidx.compose.foundation.Canvas
+          import androidx.compose.animation.AnimatedVisibility
+          import androidx.compose.animation.fadeIn
+          import androidx.compose.animation.fadeOut
           import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
           import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectDragGestures
           import androidx.compose.foundation.interaction.MutableInteractionSource
           import androidx.compose.foundation.layout.*
-          import androidx.compose.foundation.lazy.LazyColumn
-          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.shape.CircleShape
           import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.text.KeyboardActions
+          import androidx.compose.foundation.text.KeyboardOptions
           import androidx.compose.material.icons.Icons
-          import androidx.compose.material.icons.filled.Close
-          import androidx.compose.material.icons.filled.Home
-          import androidx.compose.material.icons.filled.List
-          import androidx.compose.material.icons.filled.PlayArrow
-          import androidx.compose.material.icons.filled.Refresh
+          import androidx.compose.material.icons.filled.*
           import androidx.compose.material3.*
           import androidx.compose.runtime.*
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.draw.shadow
           import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Brush
           import androidx.compose.ui.graphics.Color
-          import androidx.compose.ui.graphics.Path
-          import androidx.compose.ui.graphics.StrokeCap
-          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.graphics.SolidColor
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+          import androidx.compose.ui.text.TextStyle
           import androidx.compose.ui.text.font.FontWeight
-          import androidx.compose.ui.text.style.TextAlign
+          import androidx.compose.ui.text.input.ImeAction
+          import androidx.compose.ui.unit.IntOffset
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
-          import androidx.core.content.ContextCompat
+          import androidx.compose.ui.viewinterop.AndroidView
           import kotlinx.coroutines.delay
-
-          data class Exercise(
-              val id: Int,
-              val title: String,
-              val targetMuscle: String,
-              val commonMistake: String,
-              val description: String,
-              val durationSeconds: Int
-          )
+          import kotlinx.coroutines.isActive
+          import java.net.URLEncoder
+          import kotlin.math.roundToInt
 
           class MainActivity : ComponentActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-
-                  // منع التقاط الشاشة وحماية المحتوى
-                  window.setFlags(
-                      WindowManager.LayoutParams.FLAG_SECURE,
-                      WindowManager.LayoutParams.FLAG_SECURE
-                  )
-
                   setContent {
-                      MaterialTheme(
-                          colorScheme = darkColorScheme(
-                              primary = Color(0xFF10B981),
-                              background = Color(0xFF0F172A),
-                              surface = Color(0xFF1E293B),
-                              onBackground = Color(0xFFF8FAFC),
-                              onSurface = Color(0xFFF8FAFC)
-                          )
-                      ) {
-                          Surface(
-                              modifier = Modifier.fillMaxSize(),
-                              color = MaterialTheme.colorScheme.background
-                          ) {
-                              SafePostureApp(
-                                  onStartService = { startMonitorService() },
-                                  onStopService = { stopMonitorService() }
-                              )
+                      ApexBrowserApp()
+                  }
+              }
+          }
+
+          @SuppressLint("SetJavaScriptEnabled")
+          @Composable
+          fun ApexBrowserApp() {
+              val context = LocalContext.current
+              val keyboardController = LocalSoftwareKeyboardController.current
+
+              var currentUrl by remember { mutableStateOf("https://www.google.com") }
+              var inputUrl by remember { mutableStateOf("https://www.google.com") }
+              var pageTitle by remember { mutableStateOf("ApexBrowser") }
+              var progress by remember { mutableStateOf(0f) }
+              var isLoading by remember { mutableStateOf(false) }
+              var canGoBack by remember { mutableStateOf(false) }
+              var canGoForward by remember { mutableStateOf(false) }
+              var isDesktopMode by remember { mutableStateOf(false) }
+
+              var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+
+              // حالة عناصر الـ Floating Overlay HUD
+              var hudExpanded by remember { mutableStateOf(false) }
+              var bubbleOffset by remember { mutableStateOf(Offset(40f, 250f)) }
+
+              // محرك التحديث التلقائي الذكي
+              var autoRefreshEnabled by remember { mutableStateOf(false) }
+              var autoRefreshInterval by remember { mutableStateOf(10) }
+              var countdownSeconds by remember { mutableStateOf(10) }
+
+              // محرك النقر التلقائي
+              var autoClickerEnabled by remember { mutableStateOf(false) }
+              var clickIntervalMs by remember { mutableStateOf(1000L) }
+              var reticleOffset by remember { mutableStateOf(Offset(250f, 400f)) }
+              var isPulsing by remember { mutableStateOf(false) }
+
+              val desktopUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+              val defaultMobileUA = remember {
+                  try {
+                      WebSettings.getDefaultUserAgent(context)
+                  } catch (e: Exception) {
+                      "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+                  }
+              }
+
+              // التعامل مع زر الرجوع الفعلي للنظام
+              BackHandler(enabled = canGoBack) {
+                  webViewInstance?.let {
+                      if (it.canGoBack()) it.goBack()
+                  }
+              }
+
+              // معالج التحديث التلقائي الذكي
+              LaunchedEffect(autoRefreshEnabled, autoRefreshInterval) {
+                  if (autoRefreshEnabled) {
+                      countdownSeconds = autoRefreshInterval
+                      while (isActive && autoRefreshEnabled) {
+                          delay(1000L)
+                          if (countdownSeconds > 1) {
+                              countdownSeconds -= 1
+                          } else {
+                              countdownSeconds = autoRefreshInterval
+                              webViewInstance?.reload()
+                          }
+                      }
+                  } else {
+                      countdownSeconds = autoRefreshInterval
+                  }
+              }
+
+              // معالج النقر التلقائي وإرسال أحداث MotionEvent
+              LaunchedEffect(autoClickerEnabled, clickIntervalMs, reticleOffset) {
+                  if (autoClickerEnabled) {
+                      while (isActive && autoClickerEnabled) {
+                          delay(clickIntervalMs)
+                          webViewInstance?.let { wv ->
+                              val downTime = SystemClock.uptimeMillis()
+                              val eventTime = SystemClock.uptimeMillis()
+                              val targetX = reticleOffset.x
+                              val targetY = reticleOffset.y
+
+                              val downEvent = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_DOWN, targetX, targetY, 0)
+                              val upEvent = MotionEvent.obtain(downTime, eventTime + 30, MotionEvent.ACTION_UP, targetX, targetY, 0)
+
+                              wv.dispatchTouchEvent(downEvent)
+                              wv.dispatchTouchEvent(upEvent)
+
+                              downEvent.recycle()
+                              upEvent.recycle()
+
+                              isPulsing = true
                           }
                       }
                   }
               }
 
-              private fun startMonitorService() {
-                  val serviceIntent = Intent(this, PostureService::class.java)
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      startForegroundService(serviceIntent)
-                  } else {
-                      startService(serviceIntent)
+              // إيقاف وميض النقر
+              LaunchedEffect(isPulsing) {
+                  if (isPulsing) {
+                      delay(120L)
+                      isPulsing = false
                   }
               }
 
-              private fun stopMonitorService() {
-                  val serviceIntent = Intent(this, PostureService::class.java)
-                  stopService(serviceIntent)
-              }
-          }
-
-          @Composable
-          fun SafePostureApp(
-              onStartService: () -> Unit,
-              onStopService: () -> Unit
-          ) {
-              var selectedTab by remember { mutableStateOf(0) }
-              val isServiceRunning by PostureState.isServiceRunning.collectAsState()
-
-              // إذن الإشعارات في أندرويد 13+
-              val permissionLauncher = rememberLauncherForActivityResult(
-                  contract = ActivityResultContracts.RequestPermission(),
-                  onResult = { isGranted ->
-                      if (isGranted) {
-                          onStartService()
-                      }
-                  }
-              )
-
-              Scaffold(
-                  bottomBar = {
-                      NavigationBar(containerColor = Color(0xFF1E293B)) {
-                          NavigationBarItem(
-                              selected = selectedTab == 0,
-                              onClick = { selectedTab = 0 },
-                              icon = { Icon(Icons.Default.Home, contentDescription = "الرئيسية") },
-                              label = { Text("المراقبة") },
-                              colors = NavigationBarItemDefaults.colors(
-                                  selectedIconColor = Color(0xFF10B981),
-                                  selectedTextColor = Color(0xFF10B981),
-                                  unselectedIconColor = Color(0xFF94A3B8),
-                                  unselectedTextColor = Color(0xFF94A3B8),
-                                  indicatorColor = Color(0xFF334155)
-                              )
-                          )
-                          NavigationBarItem(
-                              selected = selectedTab == 1,
-                              onClick = { selectedTab = 1 },
-                              icon = { Icon(Icons.Default.List, contentDescription = "التمارين") },
-                              label = { Text("التمارين") },
-                              colors = NavigationBarItemDefaults.colors(
-                                  selectedIconColor = Color(0xFF10B981),
-                                  selectedTextColor = Color(0xFF10B981),
-                                  unselectedIconColor = Color(0xFF94A3B8),
-                                  unselectedTextColor = Color(0xFF94A3B8),
-                                  indicatorColor = Color(0xFF334155)
-                              )
-                          )
-                      }
-                  }
-              ) { paddingValues ->
-                  Box(
-                      modifier = Modifier
-                          .fillMaxSize()
-                          .padding(paddingValues)
-                  ) {
-                      if (selectedTab == 0) {
-                          HomeScreen(
-                              isServiceRunning = isServiceRunning,
-                              onToggleService = {
-                                  if (isServiceRunning) {
-                                      onStopService()
-                                  } else {
-                                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                          permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                      } else {
-                                          onStartService()
-                                      }
-                                  }
-                              }
-                          )
-                      } else {
-                          ExercisesScreen()
-                      }
+              // تبديل User-Agent عند تفعيل وضع الحاسوب
+              LaunchedEffect(isDesktopMode) {
+                  webViewInstance?.let { wv ->
+                      wv.settings.userAgentString = if (isDesktopMode) desktopUA else defaultMobileUA
+                      wv.settings.useWideViewPort = isDesktopMode
+                      wv.reload()
                   }
               }
-          }
 
-          @Composable
-          fun HomeScreen(
-              isServiceRunning: Boolean,
-              onToggleService: () -> Unit
-          ) {
-              val pitch by PostureState.currentPitch.collectAsState()
-              val isBadPosture by PostureState.isBadPosture.collectAsState()
+              // دالة تنقية الرابط والبحث الذكي
+              fun processAndLoadUrl(query: String) {
+                  val trimmed = query.trim()
+                  val finalUrl = when {
+                      trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+                      trimmed.contains(".") && !trimmed.contains(" ") -> "https://$trimmed"
+                      else -> {
+                          try {
+                              "https://www.google.com/search?q=" + URLEncoder.encode(trimmed, "UTF-8")
+                          } catch (e: Exception) {
+                              "https://www.google.com/search?q=$trimmed"
+                          }
+                      }
+                  }
+                  inputUrl = finalUrl
+                  currentUrl = finalUrl
+                  webViewInstance?.loadUrl(finalUrl)
+              }
 
-              // تدرج لوني ديناميكي من الأخضر الزمردي إلى الأحمر التحذيري
-              val spineColor by animateColorAsState(
-                  targetValue = when {
-                      pitch >= 60f -> Color(0xFF10B981) // زمردي ممتاز
-                      pitch >= 45f -> Color(0xFFF59E0B) // برتقالي متوسط
-                      else -> Color(0xFFEF4444)         // أحمر تحذيري
-                  },
-                  animationSpec = tween(durationMillis = 300),
-                  label = "spineColor"
-              )
-
-              Column(
+              Box(
                   modifier = Modifier
                       .fillMaxSize()
-                      .padding(20.dp),
-                  horizontalAlignment = Alignment.CenterHorizontally,
-                  verticalArrangement = Arrangement.SpaceBetween
+                      .background(Color(0xFF0F172A))
               ) {
-                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                      Text(
-                          text = "SafePosture",
-                          fontSize = 28.sp,
-                          fontWeight = FontWeight.Bold,
-                          color = Color.White
-                      )
-                      Spacer(modifier = Modifier.height(6.dp))
-                      Text(
-                          text = if (isServiceRunning) "المراقبة اللحظية نشطة" else "المراقبة متوقفة حالياً",
-                          fontSize = 14.sp,
-                          color = if (isServiceRunning) Color(0xFF10B981) else Color(0xFF94A3B8)
-                      )
-                  }
-
-                  // مجسم Canvas تفاعلي للشخص والعمود الفقري
-                  Box(
-                      modifier = Modifier
-                          .fillMaxWidth()
-                          .height(280.dp),
-                      contentAlignment = Alignment.Center
-                  ) {
-                      SpineSimulationCanvas(pitch = pitch, color = spineColor)
-                  }
-
-                  // تفاصيل الحالة والزاوية
-                  Card(
-                      modifier = Modifier.fillMaxWidth(),
-                      colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                      shape = RoundedCornerShape(16.dp)
-                  ) {
-                      Column(
-                          modifier = Modifier.padding(16.dp),
-                          horizontalAlignment = Alignment.CenterHorizontally
+                  Column(modifier = Modifier.fillMaxSize()) {
+                      // شريط التحكم العلوي
+                      Surface(
+                          color = Color(0xFF1E293B),
+                          shadowElevation = 6.dp,
+                          modifier = Modifier.fillMaxWidth()
                       ) {
-                          Row(
-                              modifier = Modifier.fillMaxWidth(),
-                              horizontalArrangement = Arrangement.SpaceAround
-                          ) {
-                              Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                  Text("زاوية الميلان", color = Color(0xFF94A3B8), fontSize = 13.sp)
-                                  Text(
-                                      "${pitch.toInt()}°",
-                                      color = spineColor,
-                                      fontSize = 24.sp,
-                                      fontWeight = FontWeight.Bold
+                          Column {
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .statusBarsPadding()
+                                      .padding(horizontal = 8.dp, vertical = 6.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  IconButton(
+                                      onClick = { webViewInstance?.let { if (it.canGoBack()) it.goBack() } },
+                                      enabled = canGoBack
+                                  ) {
+                                      Icon(
+                                          imageVector = Icons.Default.ArrowBack,
+                                          contentDescription = "Back",
+                                          tint = if (canGoBack) Color.White else Color.Gray
+                                      )
+                                  }
+
+                                  IconButton(
+                                      onClick = { webViewInstance?.let { if (it.canGoForward()) it.goForward() } },
+                                      enabled = canGoForward
+                                  ) {
+                                      Icon(
+                                          imageVector = Icons.Default.ArrowForward,
+                                          contentDescription = "Forward",
+                                          tint = if (canGoForward) Color.White else Color.Gray
+                                      )
+                                  }
+
+                                  // حقل إدخال الرابط
+                                  Box(
+                                      modifier = Modifier
+                                          .weight(1f)
+                                          .height(42.dp)
+                                          .clip(RoundedCornerShape(21.dp))
+                                          .background(Color(0xFF334155))
+                                          .padding(horizontal = 14.dp),
+                                      contentAlignment = Alignment.CenterStart
+                                  ) {
+                                      BasicTextField(
+                                          value = inputUrl,
+                                          onValueChange = { inputUrl = it },
+                                          singleLine = true,
+                                          textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                                          cursorBrush = SolidColor(Color(0xFF38BDF8)),
+                                          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                                          keyboardActions = KeyboardActions(onGo = {
+                                              keyboardController?.hide()
+                                              processAndLoadUrl(inputUrl)
+                                          }),
+                                          modifier = Modifier.fillMaxWidth()
+                                      )
+                                  }
+
+                                  Spacer(modifier = Modifier.width(6.dp))
+
+                                  IconButton(
+                                      onClick = {
+                                          if (isLoading) {
+                                              webViewInstance?.stopLoading()
+                                          } else {
+                                              webViewInstance?.reload()
+                                          }
+                                      }
+                                  ) {
+                                      Icon(
+                                          imageVector = if (isLoading) Icons.Default.Close else Icons.Default.Refresh,
+                                          contentDescription = "Reload",
+                                          tint = Color(0xFF38BDF8)
+                                      )
+                                  }
+
+                                  // تبديل Desktop Mode
+                                  IconButton(
+                                      onClick = { isDesktopMode = !isDesktopMode }
+                                  ) {
+                                      Icon(
+                                          imageVector = if (isDesktopMode) Icons.Default.DesktopWindows else Icons.Default.PhoneAndroid,
+                                          contentDescription = "Toggle Desktop",
+                                          tint = if (isDesktopMode) Color(0xFF38BDF8) else Color.LightGray
+                                      )
+                                  }
+                              }
+
+                              // شريط تقدم التحميل
+                              if (isLoading) {
+                                  LinearProgressIndicator(
+                                      progress = { progress },
+                                      modifier = Modifier
+                                          .fillMaxWidth()
+                                          .height(3.dp),
+                                      color = Color(0xFF38BDF8),
+                                      trackColor = Color.Transparent
                                   )
                               }
-                              Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                  Text("الحالة", color = Color(0xFF94A3B8), fontSize = 13.sp)
-                                  Text(
-                                      text = if (isBadPosture) "انحناء حرج!" else "سليم ومعتدل",
-                                      color = if (isBadPosture) Color(0xFFEF4444) else Color(0xFF10B981),
-                                      fontSize = 20.sp,
-                                      fontWeight = FontWeight.Bold
-                                  )
+                          }
+                      }
+
+                      // محرك الـ WebView
+                      Box(
+                          modifier = Modifier
+                              .weight(1f)
+                              .fillMaxWidth()
+                      ) {
+                          AndroidView(
+                              factory = { ctx ->
+                                  WebView(ctx).apply {
+                                      layoutParams = ViewGroup.LayoutParams(
+                                          ViewGroup.LayoutParams.MATCH_PARENT,
+                                          ViewGroup.LayoutParams.MATCH_PARENT
+                                      )
+
+                                      with(settings) {
+                                          javaScriptEnabled = true
+                                          domStorageEnabled = true
+                                          databaseEnabled = true
+                                          mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                          setSupportZoom(true)
+                                          builtInZoomControls = true
+                                          displayZoomControls = false
+                                          useWideViewPort = true
+                                          loadWithOverviewMode = true
+                                          cacheMode = WebSettings.LOAD_DEFAULT
+                                          userAgentString = defaultMobileUA
+                                      }
+
+                                      val cookieManager = CookieManager.getInstance()
+                                      cookieManager.setAcceptCookie(true)
+                                      cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                                      webViewClient = object : WebViewClient() {
+                                          override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                              return false
+                                          }
+
+                                          override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                              super.onPageStarted(view, url, favicon)
+                                              isLoading = true
+                                              url?.let {
+                                                  currentUrl = it
+                                                  inputUrl = it
+                                              }
+                                          }
+
+                                          override fun onPageFinished(view: WebView?, url: String?) {
+                                              super.onPageFinished(view, url)
+                                              isLoading = false
+                                              canGoBack = canGoBack()
+                                              canGoForward = canGoForward()
+                                              pageTitle = view?.title ?: "ApexBrowser"
+                                          }
+
+                                          override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                                              handler?.proceed()
+                                          }
+                                      }
+
+                                      webChromeClient = object : WebChromeClient() {
+                                          override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                              progress = newProgress / 100f
+                                              isLoading = newProgress < 100
+                                          }
+                                      }
+
+                                      loadUrl(currentUrl)
+                                      webViewInstance = this
+                                  }
+                              },
+                              modifier = Modifier.fillMaxSize()
+                          )
+
+                          // مؤشر التصويب للنقر التلقائي (Reticle)
+                          if (autoClickerEnabled) {
+                              Box(
+                                  modifier = Modifier
+                                      .offset { IntOffset(reticleOffset.x.roundToInt(), reticleOffset.y.roundToInt()) }
+                                      .size(54.dp)
+                                      .pointerInput(Unit) {
+                                          detectDragGestures { change, dragAmount ->
+                                              change.consume()
+                                              reticleOffset += dragAmount
+                                          }
+                                      },
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                  // تأثير النبض البصري عند كل نقرة
+                                  if (isPulsing) {
+                                      Box(
+                                          modifier = Modifier
+                                              .size(52.dp)
+                                              .scale(1.3f)
+                                              .clip(CircleShape)
+                                              .background(Color(0x55EF4444))
+                                      )
+                                  }
+
+                                  Box(
+                                      modifier = Modifier
+                                          .size(46.dp)
+                                          .clip(CircleShape)
+                                          .border(2.dp, Color(0xFFEF4444), CircleShape)
+                                          .background(Color(0x33EF4444)),
+                                      contentAlignment = Alignment.Center
+                                  ) {
+                                      Icon(
+                                          imageVector = Icons.Default.Adjust,
+                                          contentDescription = "Target Reticle",
+                                          tint = Color(0xFFEF4444),
+                                          modifier = Modifier.size(24.dp)
+                                      )
+                                  }
                               }
                           }
                       }
                   }
 
-                  // زر التفعيل / الإيقاف
+                  // الزر العائم القابل للسحب (Draggable Floating Bubble)
                   Box(
                       modifier = Modifier
-                          .fillMaxWidth()
-                          .height(54.dp)
+                          .offset { IntOffset(bubbleOffset.x.roundToInt(), bubbleOffset.y.roundToInt()) }
+                          .size(52.dp)
+                          .shadow(12.dp, CircleShape)
+                          .clip(CircleShape)
                           .background(
-                              color = if (isServiceRunning) Color(0xFFEF4444) else Color(0xFF10B981),
-                              shape = RoundedCornerShape(14.dp)
+                              Brush.linearGradient(
+                                  listOf(Color(0xFF38BDF8), Color(0xFF2563EB))
+                              )
                           )
+                          .pointerInput(Unit) {
+                              detectDragGestures { change, dragAmount ->
+                                  change.consume()
+                                  bubbleOffset += dragAmount
+                              }
+                          }
                           .clickable(
                               indication = null,
                               interactionSource = remember { MutableInteractionSource() }
-                          ) { onToggleService() },
+                          ) {
+                              hudExpanded = !hudExpanded
+                          },
                       contentAlignment = Alignment.Center
                   ) {
-                      Text(
-                          text = if (isServiceRunning) "إيقاف حماية الرقبة" else "تفعيل حماية الرقبة في الخلفية",
-                          color = Color.White,
-                          fontSize = 16.sp,
-                          fontWeight = FontWeight.Bold
-                      )
-                  }
-              }
-          }
-
-          @Composable
-          fun SpineSimulationCanvas(pitch: Float, color: Color) {
-              Canvas(modifier = Modifier.fillMaxSize()) {
-                  val centerX = size.width / 2f
-                  val bottomY = size.height * 0.85f
-
-                  // حساب انحناء الرأس والرقبة وفق زاوية الميلان الحية
-                  val tiltFactor = ((90f - pitch) / 90f).coerceIn(0f, 1f)
-                  val neckBendX = centerX + (tiltFactor * 90f)
-                  val neckBendY = bottomY - 140f + (tiltFactor * 30f)
-                  val headX = neckBendX + (tiltFactor * 35f)
-                  val headY = neckBendY - 45f
-
-                  // رسم الجذع السفلي والعمود الفقري
-                  val spinePath = Path().apply {
-                      moveTo(centerX - 10f, bottomY)
-                      cubicTo(
-                          centerX - 15f, bottomY - 60f,
-                          centerX + (tiltFactor * 30f), bottomY - 100f,
-                          neckBendX, neckBendY
+                      Icon(
+                          imageVector = if (hudExpanded) Icons.Default.Close else Icons.Default.Bolt,
+                          contentDescription = "HUD Toggle",
+                          tint = Color.White,
+                          modifier = Modifier.size(28.dp)
                       )
                   }
 
-                  // رسم مسار العمود الفقري
-                  drawPath(
-                      path = spinePath,
-                      color = color,
-                      style = Stroke(width = 12f, cap = StrokeCap.Round)
-                  )
-
-                  // فقرات ممثلة بنقاط ضوئية
-                  drawCircle(color = Color.White, radius = 4f, center = Offset(centerX - 10f, bottomY))
-                  drawCircle(color = Color.White, radius = 4f, center = Offset(centerX - 5f, bottomY - 50f))
-                  drawCircle(color = Color.White, radius = 4f, center = Offset(neckBendX, neckBendY))
-
-                  // رسم الرأس
-                  drawCircle(
-                      color = color,
-                      radius = 32f,
-                      center = Offset(headX, headY)
-                  )
-
-                  // قاعدة الجلوس التوضيحية
-                  drawLine(
-                      color = Color(0xFF334155),
-                      start = Offset(centerX - 70f, bottomY + 15f),
-                      end = Offset(centerX + 70f, bottomY + 15f),
-                      strokeWidth = 6f,
-                      cap = StrokeCap.Round
-                  )
-              }
-          }
-
-          @Composable
-          fun ExercisesScreen() {
-              val exercises = remember {
-                  listOf(
-                      Exercise(
-                          id = 1,
-                          title = "تمرين سحب الذقن (Chin Tucks)",
-                          targetMuscle = "عضلات الرقبة العميقة (Deep Neck Flexors)",
-                          commonMistake = "إمالة الرأس للأسفل بدلاً من سحبه أفقياً للخلف",
-                          description = "اجلس باعتدال، وانظر للأمام مباشرة. اسحب ذقنك إلى الخلف بلطف كأنك تصنع ذقناً مزدوجاً. اثبت لمدة 5 ثوانٍ ثم استرخ.",
-                          durationSeconds = 30
-                      ),
-                      Exercise(
-                          id = 2,
-                          title = "إطالة مدخل الباب (Doorway Stretch)",
-                          targetMuscle = "العضلة الصدرية الكبرى والصغرى (Pectoralis)",
-                          commonMistake = "تقويس أسفل الظهر لتعويض قصر حركة الكتفين",
-                          description = "ضع ساعديك على جانبي إطار الباب، وتقدم بخطوة واحدة للأمام حتى تشعر بإطالة مريحة عبر مقدمة الصدر والكتفين.",
-                          durationSeconds = 45
-                      ),
-                      Exercise(
-                          id = 3,
-                          title = "تمرين ملائكة الحائط (Wall Angels)",
-                          targetMuscle = "عضلات أعلى الظهر والجزء السفلي من شبه المنحرفة",
-                          commonMistake = "رفع أسفل الظهر أو المرفقين عن ملامسة الحائط",
-                          description = "أسند ظهرك ورأسك ومرفقيك بالكامل على حائط مستوٍ، ثم حرك ذراعيك ببطء للأعلى وللأسفل كجناحي طائر مع الحفاظ على التلامس.",
-                          durationSeconds = 60
-                      ),
-                      Exercise(
-                          id = 4,
-                          title = "إطالة العضلة شبه المنحرفة (Trapezius Stretch)",
-                          targetMuscle = "العضلة شبه المنحرفة العلوية وعضلة لوح الكتف",
-                          commonMistake = "سحب الرأس بقوة مفرطة باليد مما يجهد الأوتار",
-                          description = "أنزل كتفك الأيمن للأسفل، وأمل رأسك برفق نحو كتفك الأيسر بمساعدة يدك بلطف حتى تشعر بشد خفيف وممتد.",
-                          durationSeconds = 30
-                      )
-                  )
-              }
-
-              LazyColumn(
-                  modifier = Modifier
-                      .fillMaxSize()
-                      .padding(16.dp),
-                  verticalArrangement = Arrangement.spacedBy(16.dp)
-              ) {
-                  item {
-                      Text(
-                          text = "تمارين تصحيح القوام",
-                          fontSize = 24.sp,
-                          fontWeight = FontWeight.Bold,
-                          color = Color.White
-                      )
-                      Text(
-                          text = "تمارين علاجية موصى بها طبياً للوقاية من متلازمة رقبة الهاتف",
-                          fontSize = 13.sp,
-                          color = Color(0xFF94A3B8)
-                      )
-                      Spacer(modifier = Modifier.height(8.dp))
-                  }
-
-                  items(exercises) { exercise ->
-                      ExerciseCard(exercise = exercise)
-                  }
-              }
-          }
-
-          @Composable
-          fun ExerciseCard(exercise: Exercise) {
-              var isRunning by remember { mutableStateOf(false) }
-              var timeLeft by remember { mutableIntStateOf(exercise.durationSeconds) }
-
-              LaunchedEffect(isRunning, timeLeft) {
-                  if (isRunning && timeLeft > 0) {
-                      delay(1000L)
-                      timeLeft -= 1
-                  } else if (timeLeft == 0) {
-                      isRunning = false
-                  }
-              }
-
-              Card(
-                  modifier = Modifier.fillMaxWidth(),
-                  colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                  shape = RoundedCornerShape(16.dp)
-              ) {
-                  Column(modifier = Modifier.padding(16.dp)) {
-                      Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement = Arrangement.SpaceBetween,
-                          verticalAlignment = Alignment.CenterVertically
-                      ) {
-                          Text(
-                              text = exercise.title,
-                              fontSize = 17.sp,
-                              fontWeight = FontWeight.Bold,
-                              color = Color(0xFF10B981)
-                          )
-
-                          // رسم توضيحي مصغر في Canvas
-                          Canvas(modifier = Modifier.size(36.dp)) {
-                              drawCircle(color = Color(0xFF334155), radius = size.minDimension / 2)
-                              drawLine(
-                                  color = Color(0xFF10B981),
-                                  start = Offset(size.width * 0.3f, size.height * 0.7f),
-                                  end = Offset(size.width * 0.7f, size.height * 0.3f),
-                                  strokeWidth = 4f,
-                                  cap = StrokeCap.Round
-                              )
-                          }
-                      }
-
-                      Spacer(modifier = Modifier.height(10.dp))
-
-                      Text(
-                          text = exercise.description,
-                          fontSize = 14.sp,
-                          color = Color(0xFFE2E8F0),
-                          lineHeight = 20.sp
-                      )
-
-                      Spacer(modifier = Modifier.height(8.dp))
-
+                  // لوحة التحكم العائمة (HUD Floating Control Center)
+                  AnimatedVisibility(
+                      visible = hudExpanded,
+                      enter = fadeIn(),
+                      exit = fadeOut(),
+                      modifier = Modifier
+                          .align(Alignment.BottomCenter)
+                          .padding(16.dp)
+                  ) {
                       Surface(
-                          color = Color(0xFF0F172A),
-                          shape = RoundedCornerShape(8.dp),
+                          color = Color(0xEE0F172A),
+                          shape = RoundedCornerShape(20.dp),
+                          border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x4438BDF8)),
+                          shadowElevation = 16.dp,
                           modifier = Modifier.fillMaxWidth()
                       ) {
-                          Column(modifier = Modifier.padding(10.dp)) {
-                              Text(
-                                  text = "🎯 العضلة المستهدفة: ${exercise.targetMuscle}",
-                                  fontSize = 12.sp,
-                                  color = Color(0xFF38BDF8)
-                              )
-                              Spacer(modifier = Modifier.height(4.dp))
-                              Text(
-                                  text = "⚠️ خطأ شائع: ${exercise.commonMistake}",
-                                  fontSize = 12.sp,
-                                  color = Color(0xFFF87171)
-                              )
-                          }
-                      }
-
-                      Spacer(modifier = Modifier.height(12.dp))
-
-                      // عداد الثواني التفاعلي وأزرار التحكم
-                      Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement = Arrangement.SpaceBetween,
-                          verticalAlignment = Alignment.CenterVertically
-                      ) {
-                          Text(
-                              text = "الوقت المتبقي: $timeLeft ثانية",
-                              fontSize = 14.sp,
-                              fontWeight = FontWeight.SemiBold,
-                              color = if (timeLeft == 0) Color(0xFFEF4444) else Color.White
-                          )
-
-                          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                              Box(
-                                  modifier = Modifier
-                                      .size(38.dp)
-                                      .background(Color(0xFF334155), RoundedCornerShape(8.dp))
-                                      .clickable(
-                                          indication = null,
-                                          interactionSource = remember { MutableInteractionSource() }
-                                      ) {
-                                          isRunning = !isRunning
-                                      },
-                                  contentAlignment = Alignment.Center
+                          Column(modifier = Modifier.padding(18.dp)) {
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
                               ) {
-                                  Icon(
-                                      imageVector = if (isRunning) Icons.Default.Close else Icons.Default.PlayArrow,
-                                      contentDescription = "بدء/إيقاف",
-                                      tint = Color(0xFF10B981),
-                                      modifier = Modifier.size(20.dp)
+                                  Text(
+                                      text = "Apex Automation Panel",
+                                      color = Color(0xFF38BDF8),
+                                      fontWeight = FontWeight.Bold,
+                                      fontSize = 16.sp
+                                  )
+                                  IconButton(onClick = { hudExpanded = false }) {
+                                      Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.LightGray)
+                                  }
+                              }
+
+                              Divider(color = Color(0x33FFFFFF), thickness = 1.dp)
+                              Spacer(modifier = Modifier.height(12.dp))
+
+                              // قسم أداة التحديث التلقائي
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Column {
+                                      Text(text = "Auto Refresh Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                      Text(
+                                          text = if (autoRefreshEnabled) "Next reload in ${countdownSeconds}s" else "Disabled",
+                                          color = if (autoRefreshEnabled) Color(0xFF4ADE80) else Color.Gray,
+                                          fontSize = 12.sp
+                                      )
+                                  }
+                                  Switch(
+                                      checked = autoRefreshEnabled,
+                                      onCheckedChange = { autoRefreshEnabled = it },
+                                      colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF38BDF8))
                                   )
                               }
 
-                              Box(
-                                  modifier = Modifier
-                                      .size(38.dp)
-                                      .background(Color(0xFF334155), RoundedCornerShape(8.dp))
-                                      .clickable(
-                                          indication = null,
-                                          interactionSource = remember { MutableInteractionSource() }
-                                      ) {
-                                          isRunning = false
-                                          timeLeft = exercise.durationSeconds
-                                      },
-                                  contentAlignment = Alignment.Center
+                              Slider(
+                                  value = autoRefreshInterval.toFloat(),
+                                  onValueChange = { autoRefreshInterval = it.roundToInt() },
+                                  valueRange = 3f..60f,
+                                  steps = 57,
+                                  enabled = autoRefreshEnabled
+                              )
+
+                              Spacer(modifier = Modifier.height(12.dp))
+                              Divider(color = Color(0x22FFFFFF), thickness = 1.dp)
+                              Spacer(modifier = Modifier.height(12.dp))
+
+                              // قسم أداة النقر التلقائي
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
                               ) {
-                                  Icon(
-                                      imageVector = Icons.Default.Refresh,
-                                      contentDescription = "إعادة ضبط",
-                                      tint = Color(0xFF94A3B8),
-                                      modifier = Modifier.size(20.dp)
+                                  Column {
+                                      Text(text = "Auto Clicker Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                      Text(
+                                          text = if (autoClickerEnabled) "Interval: ${clickIntervalMs}ms (Active)" else "Reticle target inactive",
+                                          color = if (autoClickerEnabled) Color(0xFFEF4444) else Color.Gray,
+                                          fontSize = 12.sp
+                                      )
+                                  }
+                                  Switch(
+                                      checked = autoClickerEnabled,
+                                      onCheckedChange = { autoClickerEnabled = it },
+                                      colors = SwitchDefaults.colors(
+                                          checkedThumbColor = Color(0xFFEF4444),
+                                          checkedTrackColor = Color(0x66EF4444)
+                                      )
                                   )
                               }
+
+                              Slider(
+                                  value = clickIntervalMs.toFloat(),
+                                  onValueChange = { clickIntervalMs = it.toLong() },
+                                  valueRange = 100f..3000f,
+                                  steps = 29,
+                                  enabled = autoClickerEnabled
+                              )
                           }
                       }
                   }
@@ -953,16 +766,18 @@ jobs:
           }
           EOF
 
-          echo "All source files created successfully."
+      - name: Generate Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.7
+          chmod +x gradlew
 
       - name: Build Debug APK
         run: |
-          chmod +x gradlew || true
-          gradle assembleRelease --stacktrace
+          ./gradlew assembleDebug --stacktrace --no-daemon
 
-      - name: Upload SafePosture APK Artifact
+      - name: Upload ApexBrowser APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SafePosture-Release-APK
-          path: app/build/outputs/apk/release/*.apk
+          name: ApexBrowser-Debug-v1.0
+          path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
