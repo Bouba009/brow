@@ -1,10 +1,10 @@
 name: Build SafePosture APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -25,1464 +26,1336 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Accept Android licenses
-        shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
+          yes | sdkmanager --licenses || true
 
-      - name: Install Android SDK
-        shell: bash
+      - name: Install Android SDK 34
         run: |
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
+          sdkmanager "platform-tools" \
+                     "platforms;android-34" \
+                     "build-tools;34.0.0"
 
       - name: Create SafePosture project
         shell: bash
         run: |
+
           set -e
 
           mkdir -p app/src/main/java/com/safeposture
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/mipmap-hdpi
           mkdir -p app/src/main/res/values
 
           cat > settings.gradle.kts <<'EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
 
-          dependencyResolutionManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
 
-          rootProject.name = "SafePosture"
-          include(":app")
-          EOF
+rootProject.name = "SafePosture"
+include(":app")
+EOF
 
           cat > build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application") version "8.4.1" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.23" apply false
-          }
-          EOF
+plugins {
+    id("com.android.application") version "8.4.1" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.23" apply false
+}
+EOF
 
           cat > gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          EOF
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true
+EOF
 
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-          cat > app/proguard-rules.pro <<'EOF'
-          # SafePosture
-          EOF
+          cat > local.properties <<EOF
+sdk.dir=$ANDROID_HOME
+EOF
 
           cat > app/build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-          }
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
 
-          android {
-              namespace = "com.safeposture"
-              compileSdk = 34
+android {
+    namespace = "com.safeposture"
+    compileSdk = 34
 
-              defaultConfig {
-                  applicationId = "com.safeposture"
-                  minSdk = 26
-                  targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
-              }
+    defaultConfig {
+        applicationId = "com.safeposture"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+    }
 
-              buildTypes {
-                  release {
-                      isMinifyEnabled = false
-                      proguardFiles(
-                          getDefaultProguardFile("proguard-android-optimize.txt"),
-                          "proguard-rules.pro"
-                      )
-                  }
-              }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
 
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 
-              buildFeatures {
-                  compose = true
-              }
+    buildFeatures {
+        compose = true
+    }
 
-              composeOptions {
-                  kotlinCompilerExtensionVersion = "1.5.11"
-              }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.11"
+    }
 
-              lint {
-                  abortOnError = false
-                  checkReleaseBuilds = false
-              }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
 
-              packaging {
-                  resources {
-                      excludes += "/META-INF/{AL2.0,LGPL2.1}"
-                  }
-              }
-          }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+}
 
-          dependencies {
-              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+dependencies {
 
-              implementation("androidx.core:core-ktx:1.13.1")
-              implementation("androidx.activity:activity-compose:1.8.2")
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation(platform("androidx.compose:compose-bom:2024.02.00"))
 
-              implementation("androidx.compose.ui:ui")
-              implementation("androidx.compose.foundation:foundation")
-              implementation("androidx.compose.ui:ui-tooling-preview")
-              implementation("androidx.compose.material3:material3")
-              implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
 
-              debugImplementation("androidx.compose.ui:ui-tooling")
-          }
-          EOF
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+
+    debugImplementation("androidx.compose.ui:ui-tooling")
+}
+EOF
+
+          cat > app/proguard-rules.pro <<'EOF'
+# SafePosture ProGuard rules
+EOF
 
           cat > app/src/main/res/values/colors.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <color name="black">#000000</color>
-              <color name="white">#FFFFFF</color>
-          </resources>
-          EOF
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+</resources>
+EOF
 
           cat > app/src/main/res/values/themes.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="Theme.SafePosture"
-                  parent="android:style/Theme.Material.NoActionBar">
-                  <item name="android:fontFamily">sans</item>
-                  <item name="android:windowLightStatusBar">false</item>
-                  <item name="android:statusBarColor">#0D1117</item>
-                  <item name="android:navigationBarColor">#0D1117</item>
-              </style>
-          </resources>
-          EOF
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.SafePosture" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#0B0F14</item>
+        <item name="android:navigationBarColor">#0B0F14</item>
+        <item name="android:colorAccent">#63E6BE</item>
+    </style>
+
+</resources>
+EOF
+
+          cat > app/src/main/res/drawable/ic_notification.xml <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2C7.6,2 4,5.6 4,10v5l-2,2v1h20v-1l-2,-2v-5c0,-4.4 -3.6,-8 -8,-8zM9,20h6c0,1.7 -1.3,3 -3,3s-3,-1.3 -3,-3z" />
+
+</vector>
+EOF
 
           cat > app/src/main/AndroidManifest.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<?xml version="1.0" encoding="utf-8"?>
 
-              <uses-permission android:name="android.permission.VIBRATE" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-              <application
-                  android:allowBackup="true"
-                  android:label="SafePosture"
-                  android:supportsRtl="true"
-                  android:theme="@style/Theme.SafePosture">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true">
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:icon="@drawable/ic_notification"
+        android:label="SafePosture"
+        android:theme="@style/Theme.SafePosture"
+        android:supportsRtl="true">
 
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
 
-                  </activity>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
 
-                  <service
-                      android:name=".PostureMonitorService"
-                      android:exported="false"
-                      android:foregroundServiceType="dataSync" />
+        </activity>
 
-              </application>
+        <service
+            android:name=".PostureMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
-          </manifest>
-          EOF
+    </application>
+
+</manifest>
+EOF
 
           cat > app/src/main/java/com/safeposture/PostureMonitorService.kt <<'EOF'
-          package com.safeposture
+package com.safeposture
 
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.Service
-          import android.content.Context
-          import android.content.Intent
-          import android.content.pm.ServiceInfo
-          import android.hardware.Sensor
-          import android.hardware.SensorEvent
-          import android.hardware.SensorEventListener
-          import android.hardware.SensorManager
-          import android.media.AudioAttributes
-          import android.media.Ringtone
-          import android.media.RingtoneManager
-          import android.media.ToneGenerator
-          import android.os.Build
-          import android.os.IBinder
-          import android.os.VibrationEffect
-          import android.os.Vibrator
-          import android.os.VibratorManager
-          import androidx.core.app.NotificationCompat
-          import kotlin.math.abs
-          import kotlin.math.atan2
-          import kotlin.math.sqrt
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.RingtoneManager
+import android.media.ToneGenerator
+import android.os.Build
+import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.core.app.NotificationCompat
+import android.content.pm.ServiceInfo
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
-          class PostureMonitorService : Service(), SensorEventListener {
+class PostureMonitorService : Service(), SensorEventListener {
 
-              companion object {
-                  private const val CHANNEL_ID = "safe_posture_alerts"
-                  private const val SERVICE_NOTIFICATION_ID = 100
-                  private const val ALERT_NOTIFICATION_ID = 101
-                  private const val THRESHOLD = 25f
-                  private const val DELAY_MS = 2000L
-              }
+    companion object {
+        private const val CHANNEL_ID = "posture_alerts"
+        private const val NOTIFICATION_ID = 1001
 
-              private lateinit var sensorManager: SensorManager
-              private var sensor: Sensor? = null
+        private const val BAD_POSTURE_ANGLE = 25f
+        private const val REQUIRED_TIME_MS = 2000L
+    }
 
-              private var badSince = 0L
-              private var alertActive = false
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
 
-              private var ringtone: Ringtone? = null
-              private var toneGenerator: ToneGenerator? = null
+    private var badPostureStartedAt = 0L
+    private var alertActive = false
 
-              override fun onCreate() {
-                  super.onCreate()
+    private var ringtone: android.media.Ringtone? = null
+    private var toneGenerator: ToneGenerator? = null
 
-                  createChannel()
+    override fun onCreate() {
+        super.onCreate()
 
-                  sensorManager =
-                      getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        createNotificationChannel()
 
-                  sensor =
-                      sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        sensorManager =
+            getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
-                  startForegroundNotification()
+        accelerometer =
+            sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-                  sensor?.let {
-                      sensorManager.registerListener(
-                          this,
-                          it,
-                          SensorManager.SENSOR_DELAY_UI
-                      )
-                  }
-              }
+        accelerometer?.let {
+            sensorManager.registerListener(
+                this,
+                it,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
+        }
 
-              private fun createChannel() {
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val channel = NotificationChannel(
-                          CHANNEL_ID,
-                          "SafePosture Alerts",
-                          NotificationManager.IMPORTANCE_HIGH
-                      )
+        startAsForeground()
+    }
 
-                      channel.description =
-                          "Posture warning notifications"
+    private fun createNotificationChannel() {
 
-                      channel.enableVibration(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 
-                      val manager =
-                          getSystemService(
-                              Context.NOTIFICATION_SERVICE
-                          ) as NotificationManager
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Posture Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            )
 
-                      manager.createNotificationChannel(channel)
-                  }
-              }
+            channel.description =
+                "Alerts when your phone posture indicates excessive forward bending"
 
-              private fun startForegroundNotification() {
-                  val notification: Notification =
-                      NotificationCompat.Builder(
-                          this,
-                          CHANNEL_ID
-                      )
-                          .setSmallIcon(
-                              android.R.drawable.ic_dialog_info
-                          )
-                          .setContentTitle("SafePosture")
-                          .setContentText(
-                              "Posture monitoring is active"
-                          )
-                          .setPriority(
-                              NotificationCompat.PRIORITY_LOW
-                          )
-                          .setOngoing(true)
-                          .build()
+            channel.enableVibration(true)
 
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                      startForeground(
-                          SERVICE_NOTIFICATION_ID,
-                          notification,
-                          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                      )
-                  } else {
-                      startForeground(
-                          SERVICE_NOTIFICATION_ID,
-                          notification
-                      )
-                  }
-              }
+            val manager =
+                getSystemService(NotificationManager::class.java)
 
-              override fun onSensorChanged(event: SensorEvent?) {
-                  if (event == null) return
+            manager.createNotificationChannel(channel)
+        }
+    }
 
-                  if (
-                      event.sensor.type !=
-                      Sensor.TYPE_ACCELEROMETER
-                  ) {
-                      return
-                  }
+    private fun startAsForeground() {
 
-                  val x = event.values[0]
-                  val y = event.values[1]
-                  val z = event.values[2]
+        val notification = buildNotification(
+            "SafePosture is monitoring your posture"
+        )
 
-                  val pitch =
-                      Math.toDegrees(
-                          atan2(
-                              (-x).toDouble(),
-                              sqrt(
-                                  (y * y + z * z).toDouble()
-                              )
-                          )
-                      ).toFloat()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
-                  val tilt = abs(pitch)
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
 
-                  if (tilt >= THRESHOLD) {
+        } else {
 
-                      if (badSince == 0L) {
-                          badSince = System.currentTimeMillis()
-                      }
+            startForeground(
+                NOTIFICATION_ID,
+                notification
+            )
+        }
+    }
 
-                      val duration =
-                          System.currentTimeMillis() - badSince
+    private fun buildNotification(text: String): Notification {
 
-                      if (
-                          duration >= DELAY_MS &&
-                          !alertActive
-                      ) {
-                          alertActive = true
-                          showWarning()
-                      }
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(com.safeposture.R.drawable.ic_notification)
+            .setContentTitle("SafePosture")
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .build()
+    }
 
-                  } else {
+    override fun onSensorChanged(event: SensorEvent?) {
 
-                      badSince = 0L
+        if (event == null) return
 
-                      if (alertActive) {
-                          alertActive = false
-                          stopWarning()
+        if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
 
-                          val manager =
-                              getSystemService(
-                                  Context.NOTIFICATION_SERVICE
-                              ) as NotificationManager
+        val x = event.values[0]
+        val y = event.values[1]
+        val z = event.values[2]
 
-                          manager.cancel(
-                              ALERT_NOTIFICATION_ID
-                          )
-                      }
-                  }
-              }
+        val pitch = Math.toDegrees(
+            atan2(
+                (-x).toDouble(),
+                sqrt((y * y + z * z).toDouble())
+            )
+        ).toFloat()
 
-              private fun showWarning() {
-                  vibrate()
-                  playSound()
+        val forwardTilt = abs(pitch)
 
-                  val notification =
-                      NotificationCompat.Builder(
-                          this,
-                          CHANNEL_ID
-                      )
-                          .setSmallIcon(
-                              android.R.drawable.ic_dialog_alert
-                          )
-                          .setContentTitle(
-                              "Correct your posture"
-                          )
-                          .setContentText(
-                              "Your neck is tilted forward."
-                          )
-                          .setPriority(
-                              NotificationCompat.PRIORITY_MAX
-                          )
-                          .setCategory(
-                              NotificationCompat.CATEGORY_ALARM
-                          )
-                          .setOngoing(true)
-                          .setAutoCancel(false)
-                          .build()
+        if (forwardTilt >= BAD_POSTURE_ANGLE) {
 
-                  val manager =
-                      getSystemService(
-                          Context.NOTIFICATION_SERVICE
-                      ) as NotificationManager
+            if (badPostureStartedAt == 0L) {
+                badPostureStartedAt = System.currentTimeMillis()
+            }
 
-                  manager.notify(
-                      ALERT_NOTIFICATION_ID,
-                      notification
-                  )
-              }
+            val duration =
+                System.currentTimeMillis() - badPostureStartedAt
 
-              private fun vibrate() {
-                  val vibrator: Vibrator
+            if (duration >= REQUIRED_TIME_MS && !alertActive) {
+                triggerAlert()
+            }
 
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                      val manager =
-                          getSystemService(
-                              Context.VIBRATOR_MANAGER_SERVICE
-                          ) as VibratorManager
+        } else {
 
-                      vibrator = manager.defaultVibrator
-                  } else {
-                      @Suppress("DEPRECATION")
-                      vibrator =
-                          getSystemService(
-                              Context.VIBRATOR_SERVICE
-                          ) as Vibrator
-                  }
+            badPostureStartedAt = 0L
 
-                  val pattern =
-                      longArrayOf(
-                          0L,
-                          180L,
-                          120L,
-                          180L
-                      )
+            if (alertActive) {
+                stopAlert()
+            }
+        }
+    }
 
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      vibrator.vibrate(
-                          VibrationEffect.createWaveform(
-                              pattern,
-                              -1
-                          )
-                      )
-                  } else {
-                      @Suppress("DEPRECATION")
-                      vibrator.vibrate(pattern, -1)
-                  }
-              }
+    private fun triggerAlert() {
 
-              private fun playSound() {
-                  try {
-                      val uri =
-                          RingtoneManager.getDefaultUri(
-                              RingtoneManager.TYPE_NOTIFICATION
-                          )
+        alertActive = true
 
-                      ringtone =
-                          RingtoneManager.getRingtone(
-                              applicationContext,
-                              uri
-                          )
+        vibrateTwice()
+        playAlertSound()
 
-                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                          ringtone?.audioAttributes =
-                              AudioAttributes.Builder()
-                                  .setUsage(
-                                      AudioAttributes.USAGE_NOTIFICATION
-                                  )
-                                  .setContentType(
-                                      AudioAttributes.CONTENT_TYPE_SONIFICATION
-                                  )
-                                  .build()
-                      }
+        val manager =
+            getSystemService(Context.NOTIFICATION_SERVICE)
+                as NotificationManager
 
-                      ringtone?.play()
+        manager.notify(
+            NOTIFICATION_ID,
+            buildNotification(
+                "⚠ Straighten your neck and back"
+            )
+        )
+    }
 
-                  } catch (audioException: Exception) {
+    private fun stopAlert() {
 
-                      try {
-                          toneGenerator =
-                              ToneGenerator(
-                                  android.media.AudioManager.STREAM_NOTIFICATION,
-                                  100
-                              )
+        alertActive = false
 
-                          toneGenerator?.startTone(
-                              ToneGenerator.TONE_PROP_BEEP,
-                              500
-                          )
+        try {
+            ringtone?.stop()
+        } catch (error: Exception) {
+            // Ignore ringtone stop errors
+        }
 
-                      } catch (toneException: Exception) {
-                          // Audio is optional.
-                      }
-                  }
-              }
+        ringtone = null
 
-              private fun stopWarning() {
-                  try {
-                      ringtone?.stop()
-                  } catch (stopException: Exception) {
-                      // Ignore ringtone stop failure.
-                  }
+        try {
+            toneGenerator?.release()
+        } catch (error: Exception) {
+            // Ignore tone release errors
+        }
 
-                  ringtone = null
+        toneGenerator = null
 
-                  try {
-                      toneGenerator?.release()
-                  } catch (releaseException: Exception) {
-                      // Ignore tone generator release failure.
-                  }
+        val manager =
+            getSystemService(Context.NOTIFICATION_SERVICE)
+                as NotificationManager
 
-                  toneGenerator = null
-              }
+        manager.notify(
+            NOTIFICATION_ID,
+            buildNotification(
+                "✓ Posture is normal"
+            )
+        )
+    }
 
-              override fun onAccuracyChanged(
-                  sensor: Sensor?,
-                  accuracy: Int
-              ) {
-              }
+    private fun playAlertSound() {
 
-              override fun onDestroy() {
-                  sensorManager.unregisterListener(this)
-                  stopWarning()
+        try {
 
-                  val manager =
-                      getSystemService(
-                          Context.NOTIFICATION_SERVICE
-                      ) as NotificationManager
+            val uri =
+                RingtoneManager.getDefaultUri(
+                    RingtoneManager.TYPE_NOTIFICATION
+                )
 
-                  manager.cancel(ALERT_NOTIFICATION_ID)
+            ringtone =
+                RingtoneManager.getRingtone(
+                    applicationContext,
+                    uri
+                )
 
-                  super.onDestroy()
-              }
+            ringtone?.audioAttributes =
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(
+                        AudioAttributes.CONTENT_TYPE_SONIFICATION
+                    )
+                    .build()
 
-              override fun onBind(
-                  intent: Intent?
-              ): IBinder? {
-                  return null
-              }
-          }
-          EOF
+            ringtone?.play()
+
+        } catch (error: Exception) {
+
+            try {
+
+                toneGenerator =
+                    ToneGenerator(
+                        AudioManager.STREAM_NOTIFICATION,
+                        80
+                    )
+
+                toneGenerator?.startTone(
+                    ToneGenerator.TONE_PROP_BEEP2,
+                    600
+                )
+
+            } catch (toneError: Exception) {
+                // Ignore sound errors
+            }
+        }
+    }
+
+    private fun vibrateTwice() {
+
+        val vibrator: Vibrator
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+
+            val manager =
+                getSystemService(Context.VIBRATOR_MANAGER_SERVICE)
+                    as VibratorManager
+
+            vibrator = manager.defaultVibrator
+
+        } else {
+
+            @Suppress("DEPRECATION")
+            vibrator =
+                getSystemService(Context.VIBRATOR_SERVICE)
+                    as Vibrator
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+            vibrator.vibrate(
+                VibrationEffect.createWaveform(
+                    longArrayOf(
+                        0,
+                        180,
+                        120,
+                        180
+                    ),
+                    -1
+                )
+            )
+
+        } else {
+
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(
+                longArrayOf(
+                    0,
+                    180,
+                    120,
+                    180
+                ),
+                -1
+            )
+        }
+    }
+
+    override fun onAccuracyChanged(
+        sensor: Sensor?,
+        accuracy: Int
+    ) {
+    }
+
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
+    }
+
+    override fun onDestroy() {
+
+        sensorManager.unregisterListener(this)
+
+        try {
+            ringtone?.stop()
+        } catch (error: Exception) {
+            // Ignore
+        }
+
+        try {
+            toneGenerator?.release()
+        } catch (error: Exception) {
+            // Ignore
+        }
+
+        super.onDestroy()
+    }
+
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
+
+        return START_STICKY
+    }
+}
+EOF
 
           cat > app/src/main/java/com/safeposture/MainActivity.kt <<'EOF'
-          package com.safeposture
-
-          import android.Manifest
-          import android.content.Intent
-          import android.content.pm.PackageManager
-          import android.os.Build
-          import android.os.Bundle
-          import android.view.WindowManager
-          import androidx.activity.ComponentActivity
-          import androidx.activity.compose.setContent
-          import androidx.activity.result.contract.ActivityResultContracts
-          import androidx.compose.foundation.Canvas
-          import androidx.compose.foundation.background
-          import androidx.compose.foundation.clickable
-          import androidx.compose.foundation.interaction.MutableInteractionSource
-          import androidx.compose.foundation.layout.Arrangement
-          import androidx.compose.foundation.layout.Box
-          import androidx.compose.foundation.layout.Column
-          import androidx.compose.foundation.layout.Row
-          import androidx.compose.foundation.layout.Spacer
-          import androidx.compose.foundation.layout.fillMaxSize
-          import androidx.compose.foundation.layout.fillMaxWidth
-          import androidx.compose.foundation.layout.height
-          import androidx.compose.foundation.layout.padding
-          import androidx.compose.foundation.layout.size
-          import androidx.compose.foundation.layout.width
-          import androidx.compose.foundation.lazy.LazyColumn
-          import androidx.compose.foundation.lazy.items
-          import androidx.compose.foundation.shape.RoundedCornerShape
-          import androidx.compose.material.icons.Icons
-          import androidx.compose.material.icons.filled.FitnessCenter
-          import androidx.compose.material.icons.filled.Home
-          import androidx.compose.material.icons.filled.Pause
-          import androidx.compose.material.icons.filled.PlayArrow
-          import androidx.compose.material.icons.filled.Refresh
-          import androidx.compose.material.icons.filled.Shield
-          import androidx.compose.material.icons.filled.Stop
-          import androidx.compose.material3.Button
-          import androidx.compose.material3.ButtonDefaults
-          import androidx.compose.material3.Card
-          import androidx.compose.material3.CardDefaults
-          import androidx.compose.material3.Icon
-          import androidx.compose.material3.MaterialTheme
-          import androidx.compose.material3.NavigationBar
-          import androidx.compose.material3.NavigationBarItem
-          import androidx.compose.material3.Scaffold
-          import androidx.compose.material3.Surface
-          import androidx.compose.material3.Text
-          import androidx.compose.material3.darkColorScheme
-          import androidx.compose.runtime.Composable
-          import androidx.compose.runtime.LaunchedEffect
-          import androidx.compose.runtime.getValue
-          import androidx.compose.runtime.mutableIntStateOf
-          import androidx.compose.runtime.mutableStateOf
-          import androidx.compose.runtime.remember
-          import androidx.compose.runtime.setValue
-          import androidx.compose.ui.Alignment
-          import androidx.compose.ui.Modifier
-          import androidx.compose.ui.geometry.Offset
-          import androidx.compose.ui.graphics.Color
-          import androidx.compose.ui.graphics.StrokeCap
-          import androidx.compose.ui.graphics.drawscope.Stroke
-          import androidx.compose.ui.graphics.vector.ImageVector
-          import androidx.compose.ui.text.font.FontWeight
-          import androidx.compose.ui.unit.dp
-          import androidx.compose.ui.unit.sp
-          import kotlinx.coroutines.delay
-
-          private val Background = Color(0xFF0D1117)
-          private val SurfaceDark = Color(0xFF161B22)
-          private val SurfaceLight = Color(0xFF21262D)
-          private val Blue = Color(0xFF4EA1FF)
-          private val Green = Color(0xFF35D07F)
-          private val Red = Color(0xFFFF5C5C)
-          private val TextPrimary = Color(0xFFF0F6FC)
-          private val TextSecondary = Color(0xFF8B949E)
-
-          private val AppColors =
-              darkColorScheme(
-                  primary = Blue,
-                  background = Background,
-                  surface = SurfaceDark,
-                  onBackground = TextPrimary,
-                  onSurface = TextPrimary
-              )
-
-          class MainActivity : ComponentActivity() {
-
-              private val notificationPermission =
-                  registerForActivityResult(
-                      ActivityResultContracts.RequestPermission()
-                  ) {
-                      startMonitoring()
-                  }
-
-              override fun onCreate(
-                  savedInstanceState: Bundle?
-              ) {
-                  super.onCreate(savedInstanceState)
-
-                  window.addFlags(
-                      WindowManager.LayoutParams.FLAG_SECURE
-                  )
-
-                  setContent {
-                      MaterialTheme(
-                          colorScheme = AppColors
-                      ) {
-                          Surface(
-                              modifier = Modifier.fillMaxSize(),
-                              color = Background
-                          ) {
-                              SafePostureApp(
-                                  startMonitoring = {
-                                      requestPermission()
-                                  },
-                                  stopMonitoring = {
-                                      stopPostureService()
-                                  }
-                              )
-                          }
-                      }
-                  }
-              }
-
-              private fun requestPermission() {
-                  if (
-                      Build.VERSION.SDK_INT >=
-                      Build.VERSION_CODES.TIRAMISU &&
-                      checkSelfPermission(
-                          Manifest.permission.POST_NOTIFICATIONS
-                      ) != PackageManager.PERMISSION_GRANTED
-                  ) {
-                      notificationPermission.launch(
-                          Manifest.permission.POST_NOTIFICATIONS
-                      )
-                  } else {
-                      startMonitoring()
-                  }
-              }
-
-              private fun startMonitoring() {
-                  val intent =
-                      Intent(
-                          this,
-                          PostureMonitorService::class.java
-                      )
-
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      startForegroundService(intent)
-                  } else {
-                      startService(intent)
-                  }
-              }
-
-              private fun stopPostureService() {
-                  stopService(
-                      Intent(
-                          this,
-                          PostureMonitorService::class.java
-                      )
-                  )
-              }
-          }
-
-          private enum class Tab {
-              HOME,
-              EXERCISES
-          }
-
-          @Composable
-          private fun SafePostureApp(
-              startMonitoring: () -> Unit,
-              stopMonitoring: () -> Unit
-          ) {
-              var tab by remember {
-                  mutableStateOf(Tab.HOME)
-              }
-
-              Scaffold(
-                  containerColor = Background,
-                  bottomBar = {
-                      NavigationBar(
-                          containerColor = SurfaceDark
-                      ) {
-                          NavigationBarItem(
-                              selected = tab == Tab.HOME,
-                              onClick = {
-                                  tab = Tab.HOME
-                              },
-                              icon = {
-                                  Icon(
-                                      Icons.Default.Home,
-                                      contentDescription = "Home"
-                                  )
-                              },
-                              label = {
-                                  Text("Home")
-                              }
-                          )
-
-                          NavigationBarItem(
-                              selected = tab == Tab.EXERCISES,
-                              onClick = {
-                                  tab = Tab.EXERCISES
-                              },
-                              icon = {
-                                  Icon(
-                                      Icons.Default.FitnessCenter,
-                                      contentDescription = "Exercises"
-                                  )
-                              },
-                              label = {
-                                  Text("Exercises")
-                              }
-                          )
-                      }
-                  }
-              ) { padding ->
-                  if (tab == Tab.HOME) {
-                      HomeScreen(
-                          Modifier.padding(padding),
-                          startMonitoring,
-                          stopMonitoring
-                      )
-                  } else {
-                      ExercisesScreen(
-                          Modifier.padding(padding)
-                      )
-                  }
-              }
-          }
-
-          @Composable
-          private fun HomeScreen(
-              modifier: Modifier,
-              startMonitoring: () -> Unit,
-              stopMonitoring: () -> Unit
-          ) {
-              var monitoring by remember {
-                  mutableStateOf(false)
-              }
-
-              var angle by remember {
-                  mutableStateOf(8f)
-              }
-
-              LaunchedEffect(monitoring) {
-                  if (monitoring) {
-                      while (true) {
-                          delay(250)
-                          angle += 0.7f
-
-                          if (angle > 25f) {
-                              angle = 8f
-                          }
-                      }
-                  }
-              }
-
-              LazyColumn(
-                  modifier = modifier
-                      .fillMaxSize()
-                      .background(Background)
-                      .padding(18.dp),
-                  verticalArrangement =
-                      Arrangement.spacedBy(14.dp)
-              ) {
-                  item {
-                      Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          verticalAlignment =
-                              Alignment.CenterVertically
-                      ) {
-                          Icon(
-                              Icons.Default.Shield,
-                              contentDescription = null,
-                              tint = Blue,
-                              modifier = Modifier.size(36.dp)
-                          )
-
-                          Spacer(
-                              modifier = Modifier.width(12.dp)
-                          )
-
-                          Column {
-                              Text(
-                                  "SafePosture",
-                                  color = TextPrimary,
-                                  fontSize = 27.sp,
-                                  fontWeight = FontWeight.Bold
-                              )
-
-                              Text(
-                                  "Protect your neck. Protect your posture.",
-                                  color = TextSecondary,
-                                  fontSize = 13.sp
-                              )
-                          }
-                      }
-                  }
-
-                  item {
-                      Card(
-                          modifier = Modifier.fillMaxWidth(),
-                          colors = CardDefaults.cardColors(
-                              containerColor = SurfaceDark
-                          ),
-                          shape = RoundedCornerShape(22.dp)
-                      ) {
-                          Column(
-                              modifier = Modifier.padding(18.dp)
-                          ) {
-                              Text(
-                                  if (monitoring)
-                                      "MONITORING ACTIVE"
-                                  else
-                                      "MONITORING INACTIVE",
-                                  color =
-                                      if (monitoring)
-                                          Green
-                                      else
-                                          TextPrimary,
-                                  fontSize = 15.sp,
-                                  fontWeight = FontWeight.Bold
-                              )
-
-                              Spacer(
-                                  modifier = Modifier.height(8.dp)
-                              )
-
-                              Text(
-                                  "SafePosture monitors your device angle and warns you when a forward tilt remains for more than 2 seconds.",
-                                  color = TextSecondary,
-                                  fontSize = 14.sp,
-                                  lineHeight = 21.sp
-                              )
-
-                              Spacer(
-                                  modifier = Modifier.height(18.dp)
-                              )
-
-                              Button(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  onClick = {
-                                      if (monitoring) {
-                                          monitoring = false
-                                          stopMonitoring()
-                                      } else {
-                                          monitoring = true
-                                          startMonitoring()
-                                      }
-                                  },
-                                  colors =
-                                      ButtonDefaults.buttonColors(
-                                          containerColor =
-                                              if (monitoring)
-                                                  Red
-                                              else
-                                                  Blue
-                                      )
-                              ) {
-                                  Icon(
-                                      if (monitoring)
-                                          Icons.Default.Stop
-                                      else
-                                          Icons.Default.PlayArrow,
-                                      contentDescription = null
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.width(8.dp)
-                                  )
-
-                                  Text(
-                                      if (monitoring)
-                                          "Stop monitoring"
-                                      else
-                                          "Start monitoring"
-                                  )
-                              }
-                          }
-                      }
-                  }
-
-                  item {
-                      Card(
-                          modifier = Modifier.fillMaxWidth(),
-                          colors = CardDefaults.cardColors(
-                              containerColor = SurfaceDark
-                          ),
-                          shape = RoundedCornerShape(22.dp)
-                      ) {
-                          Column(
-                              modifier = Modifier.padding(12.dp),
-                              horizontalAlignment =
-                                  Alignment.CenterHorizontally
-                          ) {
-                              Text(
-                                  "LIVE POSTURE",
-                                  color = TextPrimary,
-                                  fontSize = 18.sp,
-                                  fontWeight = FontWeight.Bold
-                              )
-
-                              PostureCanvas(
-                                  angle = angle,
-                                  modifier =
-                                      Modifier
-                                          .fillMaxWidth()
-                                          .height(300.dp)
-                              )
-
-                              Text(
-                                  "${angle.toInt()}° forward tilt",
-                                  color =
-                                      if (angle < 25f)
-                                          Green
-                                      else
-                                          Red,
-                                  fontSize = 18.sp,
-                                  fontWeight = FontWeight.Bold
-                              )
-                          }
-                      }
-                  }
-              }
-          }
-
-          @Composable
-          private fun PostureCanvas(
-              angle: Float,
-              modifier: Modifier
-          ) {
-              val progress =
-                  (angle / 45f).coerceIn(0f, 1f)
-
-              val postureColor =
-                  Color(
-                      red =
-                          (255f * progress)
-                              .toInt()
-                              .coerceIn(0, 255),
-                      green =
-                          (208f * (1f - progress))
-                              .toInt()
-                              .coerceIn(0, 255),
-                      blue =
-                          (100f * (1f - progress))
-                              .toInt()
-                              .coerceIn(0, 255)
-                  )
-
-              Canvas(modifier = modifier) {
-                  val centerX = size.width / 2f
-                  val headY = 65f
-                  val lean = angle * 1.1f
-                  val neckX = centerX + lean
-                  val shoulderY = 130f
-
-                  drawCircle(
-                      color = postureColor,
-                      radius = 30f,
-                      center = Offset(
-                          neckX + 12f,
-                          headY
-                      )
-                  )
-
-                  drawLine(
-                      color = postureColor,
-                      start = Offset(
-                          neckX,
-                          headY + 27f
-                      ),
-                      end = Offset(
-                          neckX,
-                          shoulderY
-                      ),
-                      strokeWidth = 13f,
-                      cap = StrokeCap.Round
-                  )
-
-                  drawLine(
-                      color = postureColor,
-                      start = Offset(
-                          centerX - 60f,
-                          shoulderY
-                      ),
-                      end = Offset(
-                          centerX + 60f,
-                          shoulderY
-                      ),
-                      strokeWidth = 12f,
-                      cap = StrokeCap.Round
-                  )
-
-                  drawLine(
-                      color = postureColor,
-                      start = Offset(
-                          neckX,
-                          shoulderY
-                      ),
-                      end = Offset(
-                          centerX,
-                          240f
-                      ),
-                      strokeWidth = 12f,
-                      cap = StrokeCap.Round
-                  )
-
-                  drawLine(
-                      color = postureColor,
-                      start = Offset(
-                          centerX,
-                          240f
-                      ),
-                      end = Offset(
-                          centerX - 45f,
-                          285f
-                      ),
-                      strokeWidth = 13f,
-                      cap = StrokeCap.Round
-                  )
-
-                  drawLine(
-                      color = postureColor,
-                      start = Offset(
-                          centerX,
-                          240f
-                      ),
-                      end = Offset(
-                          centerX + 45f,
-                          285f
-                      ),
-                      strokeWidth = 13f,
-                      cap = StrokeCap.Round
-                  )
-
-                  drawCircle(
-                      color = postureColor.copy(alpha = 0.2f),
-                      radius = 70f + progress * 25f,
-                      center = Offset(
-                          neckX,
-                          headY
-                      ),
-                      style = Stroke(width = 3f)
-                  )
-              }
-          }
-
-          private data class Exercise(
-              val name: String,
-              val description: String,
-              val target: String,
-              val mistake: String
-          )
-
-          private val exerciseList =
-              listOf(
-                  Exercise(
-                      "Chin Tucks",
-                      "Pull your chin gently backward without looking down. Hold and release.",
-                      "Deep neck flexors",
-                      "Do not bend your head downward."
-                  ),
-                  Exercise(
-                      "Doorway Stretch",
-                      "Place your forearms on a doorway and gently move forward until you feel a chest stretch.",
-                      "Chest and shoulders",
-                      "Do not force the stretch."
-                  ),
-                  Exercise(
-                      "Wall Angels",
-                      "Stand against a wall and slowly move your arms upward while keeping your back controlled.",
-                      "Upper back and shoulders",
-                      "Do not shrug your shoulders."
-                  ),
-                  Exercise(
-                      "Trapezius Stretch",
-                      "Tilt your head gently toward one shoulder while keeping the other shoulder relaxed.",
-                      "Upper trapezius",
-                      "Do not pull strongly on your head."
-                  )
-              )
-
-          @Composable
-          private fun ExercisesScreen(
-              modifier: Modifier
-          ) {
-              LazyColumn(
-                  modifier = modifier
-                      .fillMaxSize()
-                      .background(Background)
-                      .padding(18.dp),
-                  verticalArrangement =
-                      Arrangement.spacedBy(14.dp)
-              ) {
-                  item {
-                      Text(
-                          "Exercises",
-                          color = TextPrimary,
-                          fontSize = 28.sp,
-                          fontWeight = FontWeight.Bold
-                      )
-
-                      Text(
-                          "Simple exercises for better posture.",
-                          color = TextSecondary,
-                          fontSize = 14.sp
-                      )
-                  }
-
-                  items(exerciseList) {
-                      ExerciseCard(it)
-                  }
-              }
-          }
-
-          @Composable
-          private fun ExerciseCard(
-              exercise: Exercise
-          ) {
-              var seconds by remember {
-                  mutableIntStateOf(60)
-              }
-
-              var running by remember {
-                  mutableStateOf(false)
-              }
-
-              LaunchedEffect(running) {
-                  while (running && seconds > 0) {
-                      delay(1000)
-
-                      if (seconds > 0) {
-                          seconds--
-                      }
-
-                      if (seconds == 0) {
-                          running = false
-                      }
-                  }
-              }
-
-              Card(
-                  modifier = Modifier.fillMaxWidth(),
-                  colors = CardDefaults.cardColors(
-                      containerColor = SurfaceDark
-                  ),
-                  shape = RoundedCornerShape(22.dp)
-              ) {
-                  Column(
-                      modifier = Modifier.padding(16.dp)
-                  ) {
-                      ExerciseCanvas(
-                          exercise = exercise.name,
-                          modifier =
-                              Modifier
-                                  .fillMaxWidth()
-                                  .height(190.dp)
-                      )
-
-                      Spacer(
-                          modifier = Modifier.height(10.dp)
-                      )
-
-                      Text(
-                          exercise.name,
-                          color = TextPrimary,
-                          fontSize = 21.sp,
-                          fontWeight = FontWeight.Bold
-                      )
-
-                      Spacer(
-                          modifier = Modifier.height(7.dp)
-                      )
-
-                      Text(
-                          exercise.description,
-                          color = TextSecondary,
-                          fontSize = 14.sp,
-                          lineHeight = 20.sp
-                      )
-
-                      Spacer(
-                          modifier = Modifier.height(8.dp)
-                      )
-
-                      Text(
-                          "Target: ${exercise.target}",
-                          color = Blue,
-                          fontSize = 13.sp,
-                          fontWeight = FontWeight.Bold
-                      )
-
-                      Text(
-                          "Common mistake: ${exercise.mistake}",
-                          color = TextSecondary,
-                          fontSize = 13.sp
-                      )
-
-                      Spacer(
-                          modifier = Modifier.height(14.dp)
-                      )
-
-                      Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          verticalAlignment =
-                              Alignment.CenterVertically
-                      ) {
-                          Text(
-                              "%02d:%02d".format(
-                                  seconds / 60,
-                                  seconds % 60
-                              ),
-                              color = TextPrimary,
-                              fontSize = 21.sp,
-                              fontWeight = FontWeight.Bold
-                          )
-
-                          Spacer(
-                              modifier = Modifier.width(12.dp)
-                          )
-
-                          TimerButton(
-                              if (running)
-                                  Icons.Default.Pause
-                              else
-                                  Icons.Default.PlayArrow,
-                              if (running)
-                                  "Pause"
-                              else
-                                  "Start"
-                          ) {
-                              running = !running
-                          }
-
-                          Spacer(
-                              modifier = Modifier.width(7.dp)
-                          )
-
-                          TimerButton(
-                              Icons.Default.Refresh,
-                              "Reset"
-                          ) {
-                              running = false
-                              seconds = 60
-                          }
-                      }
-                  }
-              }
-          }
-
-          @Composable
-          private fun TimerButton(
-              icon: ImageVector,
-              text: String,
-              action: () -> Unit
-          ) {
-              val interactionSource =
-                  remember {
-                      MutableInteractionSource()
-                  }
-
-              Row(
-                  modifier =
-                      Modifier
-                          .clickable(
-                              interactionSource =
-                                  interactionSource,
-                              indication = null,
-                              onClick = action
-                          )
-                          .background(
-                              SurfaceLight,
-                              RoundedCornerShape(12.dp)
-                          )
-                          .padding(
-                              horizontal = 10.dp,
-                              vertical = 8.dp
-                          ),
-                  verticalAlignment =
-                      Alignment.CenterVertically
-              ) {
-                  Icon(
-                      icon,
-                      contentDescription = text,
-                      tint = TextPrimary,
-                      modifier = Modifier.size(18.dp)
-                  )
-
-                  Spacer(
-                      modifier = Modifier.width(4.dp)
-                  )
-
-                  Text(
-                      text,
-                      color = TextPrimary,
-                      fontSize = 12.sp
-                  )
-              }
-          }
-
-          @Composable
-          private fun ExerciseCanvas(
-              exercise: String,
-              modifier: Modifier
-          ) {
-              Canvas(
-                  modifier =
-                      modifier.background(
-                          Color(0xFF10161D),
-                          RoundedCornerShape(18.dp)
-                      )
-              ) {
-                  val cx = size.width / 2f
-                  val person = Blue
-
-                  drawCircle(
-                      person,
-                      25f,
-                      Offset(cx, 45f)
-                  )
-
-                  drawLine(
-                      person,
-                      Offset(cx, 70f),
-                      Offset(cx, 125f),
-                      10f,
-                      StrokeCap.Round
-                  )
-
-                  when (exercise) {
-                      "Chin Tucks" -> {
-                          drawLine(
-                              Green,
-                              Offset(cx, 78f),
-                              Offset(cx - 38f, 72f),
-                              7f,
-                              StrokeCap.Round
-                          )
-                      }
-
-                      "Doorway Stretch" -> {
-                          drawLine(
-                              Green,
-                              Offset(cx, 90f),
-                              Offset(cx - 85f, 80f),
-                              8f,
-                              StrokeCap.Round
-                          )
-
-                          drawLine(
-                              Green,
-                              Offset(cx, 90f),
-                              Offset(cx + 85f, 80f),
-                              8f,
-                              StrokeCap.Round
-                          )
-                      }
-
-                      "Wall Angels" -> {
-                          drawLine(
-                              Green,
-                              Offset(cx, 100f),
-                              Offset(cx - 75f, 55f),
-                              8f,
-                              StrokeCap.Round
-                          )
-
-                          drawLine(
-                              Green,
-                              Offset(cx, 100f),
-                              Offset(cx + 75f, 55f),
-                              8f,
-                              StrokeCap.Round
-                          )
-                      }
-
-                      else -> {
-                          drawLine(
-                              Green,
-                              Offset(cx, 82f),
-                              Offset(cx - 55f, 105f),
-                              8f,
-                              StrokeCap.Round
-                          )
-                      }
-                  }
-
-                  drawLine(
-                      person,
-                      Offset(cx, 125f),
-                      Offset(cx - 35f, 170f),
-                      9f,
-                      StrokeCap.Round
-                  )
-
-                  drawLine(
-                      person,
-                      Offset(cx, 125f),
-                      Offset(cx + 35f, 170f),
-                      9f,
-                      StrokeCap.Round
-                  )
-              }
-          }
-          EOF
+package com.safeposture
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
+
+class MainActivity : ComponentActivity() {
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) {
+            startPostureService()
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
+
+        requestNotificationPermission()
+
+        setContent {
+            SafePostureTheme {
+                SafePostureApp()
+            }
+        }
+    }
+
+    private fun requestNotificationPermission() {
+
+        if (Build.VERSION.SDK_INT >= 33) {
+
+            if (
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+
+                notificationPermissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
+
+            } else {
+
+                startPostureService()
+            }
+
+        } else {
+
+            startPostureService()
+        }
+    }
+
+    private fun startPostureService() {
+
+        val intent =
+            Intent(
+                this,
+                PostureMonitorService::class.java
+            )
+
+        ContextCompat.startForegroundService(
+            this,
+            intent
+        )
+    }
+}
+
+@Composable
+fun SafePostureTheme(
+    content: @Composable () -> Unit
+) {
+
+    val scheme =
+        androidx.compose.material3.darkColorScheme(
+            primary = androidx.compose.ui.graphics.Color(0xFF63E6BE),
+            secondary = androidx.compose.ui.graphics.Color(0xFF74C0FC),
+            background = androidx.compose.ui.graphics.Color(0xFF080B10),
+            surface = androidx.compose.ui.graphics.Color(0xFF11161D),
+            onBackground = androidx.compose.ui.graphics.Color(0xFFF5F7FA),
+            onSurface = androidx.compose.ui.graphics.Color(0xFFF5F7FA)
+        )
+
+    MaterialTheme(
+        colorScheme = scheme,
+        content = content
+    )
+}
+
+@Composable
+fun SafePostureApp() {
+
+    var selectedTab by remember {
+        mutableIntStateOf(0)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+
+                if (selectedTab == 0) {
+                    HomeScreen()
+                } else {
+                    ExercisesScreen()
+                }
+            }
+
+            BottomBar(
+                selectedTab = selectedTab,
+                onSelected = {
+                    selectedTab = it
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun HomeScreen() {
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(20.dp)
+    ) {
+
+        item {
+
+            Text(
+                text = "SafePosture",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Protect your neck and back",
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            Spacer(
+                modifier = Modifier.height(24.dp)
+            )
+
+            PostureVisualization()
+
+            Spacer(
+                modifier = Modifier.height(20.dp)
+            )
+
+            StatusCard()
+
+            Spacer(
+                modifier = Modifier.height(16.dp)
+            )
+
+            InfoCard(
+                title = "How monitoring works",
+                text = "SafePosture uses the phone accelerometer to estimate forward tilt. If excessive tilt remains for more than 2 seconds, you receive a sound and vibration alert."
+            )
+
+            Spacer(
+                modifier = Modifier.height(16.dp)
+            )
+
+            InfoCard(
+                title = "Tip",
+                text = "Keep the top of your screen close to eye level and avoid bending your neck forward for long periods."
+            )
+        }
+    }
+}
+
+@Composable
+fun PostureVisualization() {
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(300.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+
+        Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
+
+            val centerX = size.width / 2f
+
+            val headY = size.height * 0.22f
+            val shoulderY = size.height * 0.38f
+            val spineBottom = size.height * 0.80f
+
+            drawCircle(
+                color = androidx.compose.ui.graphics.Color(0xFF63E6BE),
+                radius = 30f,
+                center = Offset(
+                    centerX,
+                    headY
+                )
+            )
+
+            drawLine(
+                color = androidx.compose.ui.graphics.Color(0xFF74C0FC),
+                start = Offset(
+                    centerX,
+                    headY + 30f
+                ),
+                end = Offset(
+                    centerX,
+                    spineBottom
+                ),
+                strokeWidth = 12f,
+                cap = StrokeCap.Round
+            )
+
+            drawLine(
+                color = androidx.compose.ui.graphics.Color(0xFF63E6BE),
+                start = Offset(
+                    centerX - 75f,
+                    shoulderY
+                ),
+                end = Offset(
+                    centerX + 75f,
+                    shoulderY
+                ),
+                strokeWidth = 14f,
+                cap = StrokeCap.Round
+            )
+
+            drawCircle(
+                color = androidx.compose.ui.graphics.Color(0xFF63E6BE),
+                radius = 105f,
+                center = Offset(
+                    centerX,
+                    size.height * 0.52f
+                ),
+                style = Stroke(
+                    width = 3f
+                )
+            )
+        }
+    }
+}
+
+@Composable
+fun StatusCard() {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+
+            Text(
+                text = "● MONITORING ACTIVE",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
+            Text(
+                text = "Your posture is being monitored in the background."
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = "Alert threshold: 25° forward tilt",
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
+    }
+}
+
+@Composable
+fun InfoCard(
+    title: String,
+    text: String
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+fun ExercisesScreen() {
+
+    val exercises = remember {
+
+        listOf(
+            Exercise(
+                "Chin Tucks",
+                "Gently pull your chin backward without looking down.",
+                "Deep neck flexors",
+                "Moving your head downward instead of backward."
+            ),
+            Exercise(
+                "Doorway Stretch",
+                "Place your forearms against a doorway and gently step forward.",
+                "Chest and shoulders",
+                "Arching your lower back."
+            ),
+            Exercise(
+                "Wall Angels",
+                "Stand against a wall and slowly move your arms upward and downward.",
+                "Upper back and shoulders",
+                "Lifting your ribs away from the wall."
+            ),
+            Exercise(
+                "Trapezius Stretch",
+                "Tilt your head gently toward one shoulder while keeping the opposite shoulder down.",
+                "Upper trapezius",
+                "Pulling your head aggressively."
+            )
+        )
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+
+        item {
+
+            Text(
+                text = "Exercises",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Simple exercises for better posture",
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        items(exercises) { exercise ->
+            ExerciseCard(exercise)
+        }
+    }
+}
+
+data class Exercise(
+    val name: String,
+    val description: String,
+    val target: String,
+    val mistake: String
+)
+
+@Composable
+fun ExerciseCard(
+    exercise: Exercise
+) {
+
+    var seconds by remember {
+        mutableIntStateOf(0)
+    }
+
+    var running by remember {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(running) {
+
+        while (running) {
+
+            delay(1000)
+
+            seconds++
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+
+            Text(
+                text = exercise.name,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(12.dp)
+            )
+
+            ExerciseIllustration()
+
+            Spacer(
+                modifier = Modifier.height(12.dp)
+            )
+
+            Text(
+                text = exercise.description
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = "Target: ${exercise.target}",
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(
+                modifier = Modifier.height(6.dp)
+            )
+
+            Text(
+                text = "Common mistake: ${exercise.mistake}",
+                color = MaterialTheme.colorScheme.secondary
+            )
+
+            Spacer(
+                modifier = Modifier.height(14.dp)
+            )
+
+            Text(
+                text = formatTime(seconds),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+
+                Button(
+                    onClick = {
+                        running = !running
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor =
+                            MaterialTheme.colorScheme.primary
+                    )
+                ) {
+
+                    Text(
+                        text =
+                            if (running) "PAUSE"
+                            else "START"
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        running = false
+                        seconds = 0
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+
+                    Text("RESET")
+                }
+            }
+        }
+    }
+}
+
+fun formatTime(
+    totalSeconds: Int
+): String {
+
+    val minutes =
+        totalSeconds / 60
+
+    val seconds =
+        totalSeconds % 60
+
+    return "%02d:%02d".format(
+        minutes,
+        seconds
+    )
+}
+
+@Composable
+fun ExerciseIllustration() {
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                MaterialTheme.colorScheme.background
+            )
+    ) {
+
+        Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
+
+            val cx = size.width / 2f
+
+            drawCircle(
+                color = androidx.compose.ui.graphics.Color(0xFF63E6BE),
+                radius = 18f,
+                center = Offset(
+                    cx,
+                    35f
+                )
+            )
+
+            drawLine(
+                color = androidx.compose.ui.graphics.Color(0xFF74C0FC),
+                start = Offset(cx, 53f),
+                end = Offset(cx, 105f),
+                strokeWidth = 10f,
+                cap = StrokeCap.Round
+            )
+
+            drawLine(
+                color = androidx.compose.ui.graphics.Color(0xFF63E6BE),
+                start = Offset(
+                    cx - 45f,
+                    70f
+                ),
+                end = Offset(
+                    cx + 45f,
+                    70f
+                ),
+                strokeWidth = 9f,
+                cap = StrokeCap.Round
+            )
+
+            drawLine(
+                color = androidx.compose.ui.graphics.Color(0xFF74C0FC),
+                start = Offset(
+                    cx,
+                    105f
+                ),
+                end = Offset(
+                    cx - 30f,
+                    132f
+                ),
+                strokeWidth = 9f,
+                cap = StrokeCap.Round
+            )
+
+            drawLine(
+                color = androidx.compose.ui.graphics.Color(0xFF74C0FC),
+                start = Offset(
+                    cx,
+                    105f
+                ),
+                end = Offset(
+                    cx + 30f,
+                    132f
+                ),
+                strokeWidth = 9f,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+fun BottomBar(
+    selectedTab: Int,
+    onSelected: (Int) -> Unit
+) {
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surface
+            )
+            .padding(
+                horizontal = 12.dp,
+                vertical = 10.dp
+            ),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+
+        BottomItem(
+            text = "HOME",
+            selected = selectedTab == 0,
+            onClick = {
+                onSelected(0)
+            }
+        )
+
+        BottomItem(
+            text = "EXERCISES",
+            selected = selectedTab == 1,
+            onClick = {
+                onSelected(1)
+            }
+        )
+    }
+}
+
+@Composable
+fun BottomItem(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+
+    val interactionSource =
+        remember {
+            androidx.compose.foundation.interaction.MutableInteractionSource()
+        }
+
+    Text(
+        text = text,
+        color =
+            if (selected)
+                MaterialTheme.colorScheme.primary
+            else
+                MaterialTheme.colorScheme.onSurface,
+        fontWeight =
+            if (selected)
+                FontWeight.Bold
+            else
+                FontWeight.Normal,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(
+                horizontal = 28.dp,
+                vertical = 12.dp
+            )
+    )
+}
+EOF
+
+          echo "======================================"
+          echo "SafePosture project created successfully"
+          echo "======================================"
 
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
@@ -1491,46 +1364,33 @@ jobs:
           cache-disabled: true
 
       - name: Verify Java and Gradle
-        shell: bash
         run: |
           java -version
           gradle --version
 
-      - name: Clean
-        shell: bash
+      - name: Clean project
         run: |
           gradle --no-daemon clean
 
       - name: Build debug APK
-        shell: bash
         run: |
-          gradle \
-            --no-daemon \
+          gradle --no-daemon \
             --stacktrace \
             :app:assembleDebug
 
       - name: Verify APK
-        shell: bash
         run: |
-          set -e
-
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-
-          test -f "$APK"
-
-          echo "APK successfully created:"
-          ls -lh "$APK"
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Rename APK
-        shell: bash
         run: |
-          cp \
-            app/build/outputs/apk/debug/app-debug.apk \
-            SafePosture-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             SafePosture-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SafePosture-debug
+          name: SafePosture-APK
           path: SafePosture-debug.apk
           if-no-files-found: error
