@@ -34,7 +34,7 @@ jobs:
         run: |
           set -e
 
-          # إنشاء مجلدات المشروع الأساسية
+          # إنشاء مجلدات المشروع
           mkdir -p gradle/wrapper
           mkdir -p app/src/main/java/com/apex/browser
           mkdir -p app/src/main/res/values
@@ -158,7 +158,7 @@ jobs:
           }
           EOF
 
-          # إنشاء ملف proguard-rules.pro فارغ
+          # ملف Proguard
           touch app/proguard-rules.pro
 
           # كتابة strings.xml
@@ -196,7 +196,7 @@ jobs:
           </manifest>
           EOF
 
-          # كتابة الكود البرمجي الكامل لـ MainActivity.kt
+          # كتابة MainActivity.kt مع معالجة كافة الـ Imports وحل مشكلة ViewGroup
           cat << 'EOF' > app/src/main/java/com/apex/browser/MainActivity.kt
           package com.apex.browser
 
@@ -207,6 +207,7 @@ jobs:
           import android.os.SystemClock
           import android.view.MotionEvent
           import android.view.View
+          import android.view.ViewGroup
           import android.webkit.CookieManager
           import android.webkit.SslErrorHandler
           import android.webkit.WebChromeClient
@@ -285,16 +286,16 @@ jobs:
 
               var webViewInstance by remember { mutableStateOf<WebView?>(null) }
 
-              // حالة عناصر الـ Floating Overlay HUD
+              // عناصر HUD العائمة
               var hudExpanded by remember { mutableStateOf(false) }
               var bubbleOffset by remember { mutableStateOf(Offset(40f, 250f)) }
 
-              // محرك التحديث التلقائي الذكي
+              // أداة التحديث التلقائي
               var autoRefreshEnabled by remember { mutableStateOf(false) }
               var autoRefreshInterval by remember { mutableStateOf(10) }
               var countdownSeconds by remember { mutableStateOf(10) }
 
-              // محرك النقر التلقائي
+              // أداة النقر التلقائي
               var autoClickerEnabled by remember { mutableStateOf(false) }
               var clickIntervalMs by remember { mutableStateOf(1000L) }
               var reticleOffset by remember { mutableStateOf(Offset(250f, 400f)) }
@@ -309,14 +310,14 @@ jobs:
                   }
               }
 
-              // التعامل مع زر الرجوع الفعلي للنظام
+              // زر الرجوع الفعلي للنظام
               BackHandler(enabled = canGoBack) {
                   webViewInstance?.let {
                       if (it.canGoBack()) it.goBack()
                   }
               }
 
-              // معالج التحديث التلقائي الذكي
+              // دورة التحديث التلقائي
               LaunchedEffect(autoRefreshEnabled, autoRefreshInterval) {
                   if (autoRefreshEnabled) {
                       countdownSeconds = autoRefreshInterval
@@ -334,7 +335,7 @@ jobs:
                   }
               }
 
-              // معالج النقر التلقائي وإرسال أحداث MotionEvent
+              // إرسال أحداث النقر الحقيقي عبر MotionEvent
               LaunchedEffect(autoClickerEnabled, clickIntervalMs, reticleOffset) {
                   if (autoClickerEnabled) {
                       while (isActive && autoClickerEnabled) {
@@ -360,7 +361,6 @@ jobs:
                   }
               }
 
-              // إيقاف وميض النقر
               LaunchedEffect(isPulsing) {
                   if (isPulsing) {
                       delay(120L)
@@ -368,7 +368,6 @@ jobs:
                   }
               }
 
-              // تبديل User-Agent عند تفعيل وضع الحاسوب
               LaunchedEffect(isDesktopMode) {
                   webViewInstance?.let { wv ->
                       wv.settings.userAgentString = if (isDesktopMode) desktopUA else defaultMobileUA
@@ -377,7 +376,6 @@ jobs:
                   }
               }
 
-              // دالة تنقية الرابط والبحث الذكي
               fun processAndLoadUrl(query: String) {
                   val trimmed = query.trim()
                   val finalUrl = when {
@@ -402,7 +400,7 @@ jobs:
                       .background(Color(0xFF0F172A))
               ) {
                   Column(modifier = Modifier.fillMaxSize()) {
-                      // شريط التحكم العلوي
+                      // شريط الأدوات والتنقل العلوي
                       Surface(
                           color = Color(0xFF1E293B),
                           shadowElevation = 6.dp,
@@ -438,7 +436,7 @@ jobs:
                                       )
                                   }
 
-                                  // حقل إدخال الرابط
+                                  // حقل إدخال الرابط والبحث
                                   Box(
                                       modifier = Modifier
                                           .weight(1f)
@@ -481,7 +479,6 @@ jobs:
                                       )
                                   }
 
-                                  // تبديل Desktop Mode
                                   IconButton(
                                       onClick = { isDesktopMode = !isDesktopMode }
                                   ) {
@@ -493,7 +490,6 @@ jobs:
                                   }
                               }
 
-                              // شريط تقدم التحميل
                               if (isLoading) {
                                   LinearProgressIndicator(
                                       progress = { progress },
@@ -507,7 +503,7 @@ jobs:
                           }
                       }
 
-                      // محرك الـ WebView
+                      // محرك WebView
                       Box(
                           modifier = Modifier
                               .weight(1f)
@@ -580,7 +576,7 @@ jobs:
                               modifier = Modifier.fillMaxSize()
                           )
 
-                          // مؤشر التصويب للنقر التلقائي (Reticle)
+                          // مؤشر الاستهداف الطافي (Target Reticle)
                           if (autoClickerEnabled) {
                               Box(
                                   modifier = Modifier
@@ -594,7 +590,6 @@ jobs:
                                       },
                                   contentAlignment = Alignment.Center
                               ) {
-                                  // تأثير النبض البصري عند كل نقرة
                                   if (isPulsing) {
                                       Box(
                                           modifier = Modifier
@@ -625,7 +620,7 @@ jobs:
                       }
                   }
 
-                  // الزر العائم القابل للسحب (Draggable Floating Bubble)
+                  // الزر العائم القابل للسحب (Draggable Bubble)
                   Box(
                       modifier = Modifier
                           .offset { IntOffset(bubbleOffset.x.roundToInt(), bubbleOffset.y.roundToInt()) }
@@ -659,7 +654,7 @@ jobs:
                       )
                   }
 
-                  // لوحة التحكم العائمة (HUD Floating Control Center)
+                  // لوحة تحكم الأتمتة العائمة (Glassmorphic HUD)
                   AnimatedVisibility(
                       visible = hudExpanded,
                       enter = fadeIn(),
@@ -692,10 +687,10 @@ jobs:
                                   }
                               }
 
-                              Divider(color = Color(0x33FFFFFF), thickness = 1.dp)
+                              HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
                               Spacer(modifier = Modifier.height(12.dp))
 
-                              // قسم أداة التحديث التلقائي
+                              // إعدادات التحديث التلقائي
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
                                   horizontalArrangement = Arrangement.SpaceBetween,
@@ -725,10 +720,10 @@ jobs:
                               )
 
                               Spacer(modifier = Modifier.height(12.dp))
-                              Divider(color = Color(0x22FFFFFF), thickness = 1.dp)
+                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
                               Spacer(modifier = Modifier.height(12.dp))
 
-                              // قسم أداة النقر التلقائي
+                              // إعدادات النقر التلقائي
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
                                   horizontalArrangement = Arrangement.SpaceBetween,
