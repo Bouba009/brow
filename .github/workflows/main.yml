@@ -16,45 +16,73 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+
+      # ============================================================
+      # 1. Checkout
+      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ============================================================
+      # 2. JDK 17
+      # IMPORTANT:
+      # No Gradle cache here because the project does not exist yet.
+      # ============================================================
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
+      # ============================================================
+      # 3. Android SDK
+      # ============================================================
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # ============================================================
+      # 4. Accept Android licenses
+      # ============================================================
       - name: Accept Android SDK licenses
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
 
+      # ============================================================
+      # 5. Install Android SDK 34
+      # ============================================================
       - name: Install Android SDK 34
         shell: bash
         run: |
-          sdkmanager "platform-tools" \
-                     "platforms;android-34" \
-                     "build-tools;34.0.0"
+          set -e
 
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      # ============================================================
+      # 6. Create complete Android project
+      # ============================================================
       - name: Create SafePosture project
         shell: bash
         run: |
           set -e
 
-          rm -rf app build.gradle.kts settings.gradle.kts gradle.properties local.properties
+          echo "Creating SafePosture project..."
+
+          rm -rf app
+          rm -f build.gradle.kts
+          rm -f settings.gradle.kts
+          rm -f gradle.properties
+          rm -f local.properties
+
           mkdir -p app/src/main/java/com/safeposture
           mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/drawable
-          mkdir -p app/src/main/res/mipmap-hdpi
-          mkdir -p app/src/main/res/mipmap-mdpi
-          mkdir -p app/src/main/res/mipmap-xhdpi
-          mkdir -p app/src/main/res/mipmap-xxhdpi
-          mkdir -p app/src/main/res/mipmap-xxxhdpi
+
+          # ========================================================
+          # settings.gradle.kts
+          # ========================================================
 
           cat > settings.gradle.kts << 'EOF'
           pluginManagement {
@@ -67,6 +95,7 @@ jobs:
 
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+
               repositories {
                   google()
                   mavenCentral()
@@ -74,8 +103,13 @@ jobs:
           }
 
           rootProject.name = "SafePosture"
+
           include(":app")
           EOF
+
+          # ========================================================
+          # Root build.gradle.kts
+          # ========================================================
 
           cat > build.gradle.kts << 'EOF'
           plugins {
@@ -84,16 +118,29 @@ jobs:
           }
           EOF
 
+          # ========================================================
+          # gradle.properties
+          # ========================================================
+
           cat > gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           android.useAndroidX=true
           kotlin.code.style=official
           android.nonTransitiveRClass=true
+          android.defaults.buildfeatures.buildconfig=true
           EOF
+
+          # ========================================================
+          # local.properties
+          # ========================================================
 
           cat > local.properties << EOF
           sdk.dir=${ANDROID_HOME}
           EOF
+
+          # ========================================================
+          # app/build.gradle.kts
+          # ========================================================
 
           cat > app/build.gradle.kts << 'EOF'
           plugins {
@@ -103,12 +150,15 @@ jobs:
 
           android {
               namespace = "com.safeposture"
+
               compileSdk = 34
 
               defaultConfig {
                   applicationId = "com.safeposture"
+
                   minSdk = 26
                   targetSdk = 34
+
                   versionCode = 1
                   versionName = "1.0"
 
@@ -120,8 +170,11 @@ jobs:
               buildTypes {
                   release {
                       isMinifyEnabled = false
+
                       proguardFiles(
-                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          getDefaultProguardFile(
+                              "proguard-android-optimize.txt"
+                          ),
                           "proguard-rules.pro"
                       )
                   }
@@ -161,62 +214,142 @@ jobs:
           }
 
           dependencies {
-              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
 
-              implementation("androidx.core:core-ktx:1.13.1")
-              implementation("androidx.activity:activity-compose:1.9.0")
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
+              implementation(
+                  platform(
+                      "androidx.compose:compose-bom:2024.02.00"
+                  )
+              )
 
-              implementation("androidx.compose.ui:ui")
-              implementation("androidx.compose.ui:ui-tooling-preview")
-              implementation("androidx.compose.foundation:foundation")
-              implementation("androidx.compose.material3:material3")
-              implementation("androidx.compose.material:material-icons-core")
+              implementation(
+                  "androidx.core:core-ktx:1.13.1"
+              )
 
-              debugImplementation("androidx.compose.ui:ui-tooling")
+              implementation(
+                  "androidx.activity:activity-compose:1.9.0"
+              )
 
-              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation(
+                  "androidx.lifecycle:lifecycle-runtime-ktx:2.8.0"
+              )
+
+              implementation(
+                  "androidx.appcompat:appcompat:1.7.0"
+              )
+
+              implementation(
+                  "androidx.compose.ui:ui"
+              )
+
+              implementation(
+                  "androidx.compose.ui:ui-tooling-preview"
+              )
+
+              implementation(
+                  "androidx.compose.foundation:foundation"
+              )
+
+              implementation(
+                  "androidx.compose.material3:material3"
+              )
+
+              implementation(
+                  "androidx.compose.material:material-icons-core"
+              )
+
+              debugImplementation(
+                  "androidx.compose.ui:ui-tooling"
+              )
           }
           EOF
 
+          # ========================================================
+          # ProGuard
+          # ========================================================
+
           cat > app/proguard-rules.pro << 'EOF'
-          # SafePosture currently does not require custom ProGuard rules.
+          # SafePosture custom ProGuard rules.
           EOF
+
+          # ========================================================
+          # colors.xml
+          # ========================================================
 
           cat > app/src/main/res/values/colors.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
+
           <resources>
+
               <color name="safe_black">#080A0F</color>
+
               <color name="safe_surface">#11151C</color>
+
               <color name="safe_surface_2">#181D26</color>
+
               <color name="safe_green">#19D98A</color>
+
               <color name="safe_red">#FF4D5A</color>
+
               <color name="safe_white">#F4F7FA</color>
+
               <color name="safe_gray">#89919F</color>
+
           </resources>
           EOF
+
+          # ========================================================
+          # themes.xml
+          # ========================================================
 
           cat > app/src/main/res/values/themes.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
+
           <resources>
-              <style name="Theme.SafePosture" parent="android:style/Theme.Material.NoActionBar">
+
+              <style
+                  name="Theme.SafePosture"
+                  parent="android:style/Theme.Material.NoActionBar">
+
                   <item name="android:fontFamily">sans</item>
-                  <item name="android:windowLightStatusBar">false</item>
-                  <item name="android:statusBarColor">@color/safe_black</item>
-                  <item name="android:navigationBarColor">@color/safe_black</item>
-                  <item name="android:windowActionModeOverlay">true</item>
+
+                  <item name="android:windowLightStatusBar">
+                      false
+                  </item>
+
+                  <item name="android:statusBarColor">
+                      @color/safe_black
+                  </item>
+
+                  <item name="android:navigationBarColor">
+                      @color/safe_black
+                  </item>
+
               </style>
+
           </resources>
           EOF
 
+          # ========================================================
+          # AndroidManifest.xml
+          # ========================================================
+
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-              <uses-permission android:name="android.permission.VIBRATE" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+          <manifest
+              xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission
+                  android:name="android.permission.VIBRATE" />
+
+              <uses-permission
+                  android:name="android.permission.POST_NOTIFICATIONS" />
+
+              <uses-permission
+                  android:name="android.permission.FOREGROUND_SERVICE" />
+
+              <uses-permission
+                  android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
               <uses-feature
                   android:name="android.hardware.sensor.accelerometer"
@@ -235,8 +368,13 @@ jobs:
                       android:screenOrientation="portrait">
 
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
+
+                          <action
+                              android:name="android.intent.action.MAIN" />
+
+                          <category
+                              android:name="android.intent.category.LAUNCHER" />
+
                       </intent-filter>
 
                   </activity>
@@ -252,6 +390,10 @@ jobs:
           </manifest>
           EOF
 
+          # ========================================================
+          # PostureMonitorService.kt
+          # ========================================================
+
           cat > app/src/main/java/com/safeposture/PostureMonitorService.kt << 'EOF'
           package com.safeposture
 
@@ -262,6 +404,7 @@ jobs:
           import android.app.Service
           import android.content.Context
           import android.content.Intent
+          import android.content.pm.ServiceInfo
           import android.hardware.Sensor
           import android.hardware.SensorEvent
           import android.hardware.SensorEventListener
@@ -274,29 +417,43 @@ jobs:
           import android.os.VibrationEffect
           import android.os.Vibrator
           import android.os.VibratorManager
-          import android.content.pm.ServiceInfo
           import androidx.core.app.NotificationCompat
+          import kotlin.math.abs
           import kotlin.math.atan2
           import kotlin.math.sqrt
 
-          class PostureMonitorService : Service(), SensorEventListener {
+          class PostureMonitorService :
+              Service(),
+              SensorEventListener {
 
               companion object {
-                  const val ACTION_START = "com.safeposture.START"
-                  const val ACTION_STOP = "com.safeposture.STOP"
 
-                  const val CHANNEL_ID = "posture_warning_channel"
+                  const val ACTION_START =
+                      "com.safeposture.START"
+
+                  const val ACTION_STOP =
+                      "com.safeposture.STOP"
+
+                  const val CHANNEL_ID =
+                      "posture_warning_channel"
+
                   const val NOTIFICATION_ID = 1001
 
-                  private const val BAD_POSTURE_DELAY_MS = 2000L
-                  private const val BAD_POSTURE_ANGLE = 25.0f
+                  private const val BAD_POSTURE_DELAY_MS =
+                      2000L
+
+                  private const val BAD_POSTURE_ANGLE =
+                      25.0f
               }
 
               private lateinit var sensorManager: SensorManager
+
               private var accelerometer: Sensor? = null
 
               private var badPostureSince = 0L
+
               private var warningActive = false
+
               private var ringtone: Ringtone? = null
 
               override fun onCreate() {
@@ -305,28 +462,39 @@ jobs:
                   createNotificationChannel()
 
                   sensorManager =
-                      getSystemService(Context.SENSOR_SERVICE) as SensorManager
+                      getSystemService(
+                          Context.SENSOR_SERVICE
+                      ) as SensorManager
 
                   accelerometer =
-                      sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+                      sensorManager.getDefaultSensor(
+                          Sensor.TYPE_ACCELEROMETER
+                      )
 
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                  val notification =
+                      buildForegroundNotification()
+
+                  if (
+                      Build.VERSION.SDK_INT >=
+                      Build.VERSION_CODES.Q
+                  ) {
                       startForeground(
                           NOTIFICATION_ID,
-                          buildForegroundNotification(),
+                          notification,
                           ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                       )
                   } else {
                       startForeground(
                           NOTIFICATION_ID,
-                          buildForegroundNotification()
+                          notification
                       )
                   }
 
-                  accelerometer?.let {
+                  accelerometer?.let { sensor ->
+
                       sensorManager.registerListener(
                           this,
-                          it,
+                          sensor,
                           SensorManager.SENSOR_DELAY_UI
                       )
                   }
@@ -337,50 +505,86 @@ jobs:
                   flags: Int,
                   startId: Int
               ): Int {
-                  if (intent?.action == ACTION_STOP) {
+
+                  if (
+                      intent?.action == ACTION_STOP
+                  ) {
                       stopMonitoring()
+
                       return START_NOT_STICKY
                   }
 
                   return START_STICKY
               }
 
-              override fun onSensorChanged(event: SensorEvent?) {
-                  if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) {
+              override fun onSensorChanged(
+                  event: SensorEvent?
+              ) {
+
+                  if (
+                      event == null ||
+                      event.sensor.type !=
+                      Sensor.TYPE_ACCELEROMETER
+                  ) {
                       return
                   }
 
                   val x = event.values[0]
+
                   val y = event.values[1]
+
                   val z = event.values[2]
 
                   val pitch =
                       Math.toDegrees(
                           atan2(
                               (-x).toDouble(),
-                              sqrt((y * y + z * z).toDouble())
+                              sqrt(
+                                  (
+                                      y * y +
+                                      z * z
+                                  ).toDouble()
+                              )
                           )
                       ).toFloat()
 
-                  val forwardTilt = kotlin.math.abs(pitch)
+                  val forwardTilt = abs(pitch)
 
-                  if (forwardTilt >= BAD_POSTURE_ANGLE) {
-                      if (badPostureSince == 0L) {
-                          badPostureSince = System.currentTimeMillis()
+                  if (
+                      forwardTilt >=
+                      BAD_POSTURE_ANGLE
+                  ) {
+
+                      if (
+                          badPostureSince == 0L
+                      ) {
+                          badPostureSince =
+                              System.currentTimeMillis()
                       }
 
                       val elapsed =
-                          System.currentTimeMillis() - badPostureSince
+                          System.currentTimeMillis() -
+                          badPostureSince
 
-                      if (elapsed >= BAD_POSTURE_DELAY_MS && !warningActive) {
+                      if (
+                          elapsed >=
+                          BAD_POSTURE_DELAY_MS &&
+                          !warningActive
+                      ) {
+
                           warningActive = true
+
                           showPostureWarning()
                       }
+
                   } else {
+
                       badPostureSince = 0L
 
                       if (warningActive) {
+
                           warningActive = false
+
                           clearPostureWarning()
                       }
                   }
@@ -393,38 +597,67 @@ jobs:
               }
 
               private fun showPostureWarning() {
+
                   vibrateWarning()
+
                   playWarningSound()
 
-                  val notificationManager =
-                      getSystemService(Context.NOTIFICATION_SERVICE)
-                          as NotificationManager
+                  val manager =
+                      getSystemService(
+                          Context.NOTIFICATION_SERVICE
+                      ) as NotificationManager
 
                   val notification =
-                      NotificationCompat.Builder(this, CHANNEL_ID)
-                          .setSmallIcon(android.R.drawable.ic_dialog_alert)
-                          .setContentTitle("Correct your posture")
-                          .setContentText("Lift your phone and straighten your neck.")
-                          .setPriority(NotificationCompat.PRIORITY_HIGH)
-                          .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                      NotificationCompat.Builder(
+                          this,
+                          CHANNEL_ID
+                      )
+                          .setSmallIcon(
+                              android.R.drawable.ic_dialog_alert
+                          )
+                          .setContentTitle(
+                              "Correct your posture"
+                          )
+                          .setContentText(
+                              "Lift your phone and straighten your neck."
+                          )
+                          .setPriority(
+                              NotificationCompat.PRIORITY_HIGH
+                          )
+                          .setCategory(
+                              NotificationCompat.CATEGORY_REMINDER
+                          )
                           .setAutoCancel(false)
                           .setOngoing(true)
-                          .setVibrate(longArrayOf(0, 180, 120, 180))
-                          .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                          .setVibrate(
+                              longArrayOf(
+                                  0,
+                                  180,
+                                  120,
+                                  180
+                              )
+                          )
+                          .setVisibility(
+                              NotificationCompat.VISIBILITY_PUBLIC
+                          )
                           .build()
 
-                  notificationManager.notify(
+                  manager.notify(
                       NOTIFICATION_ID + 1,
                       notification
                   )
               }
 
               private fun clearPostureWarning() {
-                  val notificationManager =
-                      getSystemService(Context.NOTIFICATION_SERVICE)
-                          as NotificationManager
 
-                  notificationManager.cancel(NOTIFICATION_ID + 1)
+                  val manager =
+                      getSystemService(
+                          Context.NOTIFICATION_SERVICE
+                      ) as NotificationManager
+
+                  manager.cancel(
+                      NOTIFICATION_ID + 1
+                  )
 
                   try {
                       ringtone?.stop()
@@ -435,7 +668,9 @@ jobs:
               }
 
               private fun playWarningSound() {
+
                   try {
+
                       val uri =
                           RingtoneManager.getDefaultUri(
                               RingtoneManager.TYPE_NOTIFICATION
@@ -458,8 +693,11 @@ jobs:
                               .build()
 
                       ringtone?.play()
+
                   } catch (e: Exception) {
+
                       try {
+
                           val tone =
                               android.media.ToneGenerator(
                                   android.media.AudioManager.STREAM_NOTIFICATION,
@@ -472,20 +710,27 @@ jobs:
                           )
 
                           tone.release()
+
                       } catch (ignored: Exception) {
                       }
                   }
               }
 
               private fun vibrateWarning() {
+
                   try {
-                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                          val vibratorManager =
+
+                      if (
+                          Build.VERSION.SDK_INT >=
+                          Build.VERSION_CODES.S
+                      ) {
+
+                          val manager =
                               getSystemService(
                                   Context.VIBRATOR_MANAGER_SERVICE
                               ) as VibratorManager
 
-                          vibratorManager.defaultVibrator.vibrate(
+                          manager.defaultVibrator.vibrate(
                               VibrationEffect.createWaveform(
                                   longArrayOf(
                                       0,
@@ -496,7 +741,9 @@ jobs:
                                   -1
                               )
                           )
+
                       } else {
+
                           @Suppress("DEPRECATION")
                           val vibrator =
                               getSystemService(
@@ -516,13 +763,19 @@ jobs:
                               )
                           )
                       }
+
                   } catch (e: Exception) {
                   }
               }
 
-              private fun buildForegroundNotification(): Notification {
+              private fun buildForegroundNotification():
+                  Notification {
+
                   val intent =
-                      Intent(this, MainActivity::class.java)
+                      Intent(
+                          this,
+                          MainActivity::class.java
+                      )
 
                   val pendingIntent =
                       PendingIntent.getActivity(
@@ -537,29 +790,55 @@ jobs:
                       this,
                       CHANNEL_ID
                   )
-                      .setSmallIcon(android.R.drawable.ic_dialog_info)
-                      .setContentTitle("SafePosture is active")
-                      .setContentText("Posture monitoring is running.")
-                      .setContentIntent(pendingIntent)
+                      .setSmallIcon(
+                          android.R.drawable.ic_dialog_info
+                      )
+                      .setContentTitle(
+                          "SafePosture is active"
+                      )
+                      .setContentText(
+                          "Posture monitoring is running."
+                      )
+                      .setContentIntent(
+                          pendingIntent
+                      )
                       .setOngoing(true)
-                      .setCategory(NotificationCompat.CATEGORY_SERVICE)
-                      .setPriority(NotificationCompat.PRIORITY_LOW)
+                      .setCategory(
+                          NotificationCompat.CATEGORY_SERVICE
+                      )
+                      .setPriority(
+                          NotificationCompat.PRIORITY_LOW
+                      )
                       .build()
               }
 
               private fun createNotificationChannel() {
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+                  if (
+                      Build.VERSION.SDK_INT >=
+                      Build.VERSION_CODES.O
+                  ) {
+
                       val channel =
                           NotificationChannel(
                               CHANNEL_ID,
                               "Posture Warnings",
                               NotificationManager.IMPORTANCE_HIGH
                           ).apply {
+
                               description =
                                   "High priority alerts for poor posture."
+
                               enableVibration(true)
+
                               vibrationPattern =
-                                  longArrayOf(0, 180, 120, 180)
+                                  longArrayOf(
+                                      0,
+                                      180,
+                                      120,
+                                      180
+                                  )
+
                               setSound(
                                   RingtoneManager.getDefaultUri(
                                       RingtoneManager.TYPE_NOTIFICATION
@@ -577,36 +856,55 @@ jobs:
                               Context.NOTIFICATION_SERVICE
                           ) as NotificationManager
 
-                      manager.createNotificationChannel(channel)
+                      manager.createNotificationChannel(
+                          channel
+                      )
                   }
               }
 
               private fun stopMonitoring() {
+
                   try {
-                      sensorManager.unregisterListener(this)
+                      sensorManager.unregisterListener(
+                          this
+                      )
                   } catch (e: Exception) {
                   }
 
                   clearPostureWarning()
-                  stopForeground(STOP_FOREGROUND_REMOVE)
+
+                  stopForeground(
+                      STOP_FOREGROUND_REMOVE
+                  )
+
                   stopSelf()
               }
 
               override fun onDestroy() {
+
                   try {
-                      sensorManager.unregisterListener(this)
+                      sensorManager.unregisterListener(
+                          this
+                      )
                   } catch (e: Exception) {
                   }
 
                   clearPostureWarning()
+
                   super.onDestroy()
               }
 
-              override fun onBind(intent: Intent?): IBinder? {
+              override fun onBind(
+                  intent: Intent?
+              ): IBinder? {
                   return null
               }
           }
           EOF
+
+          # ========================================================
+          # MainActivity.kt
+          # ========================================================
 
           cat > app/src/main/java/com/safeposture/MainActivity.kt << 'EOF'
           package com.safeposture
@@ -653,7 +951,6 @@ jobs:
           import androidx.compose.material3.Surface
           import androidx.compose.material3.Text
           import androidx.compose.runtime.Composable
-          import androidx.compose.runtime.DisposableEffect
           import androidx.compose.runtime.LaunchedEffect
           import androidx.compose.runtime.getValue
           import androidx.compose.runtime.mutableFloatStateOf
@@ -665,13 +962,12 @@ jobs:
           import androidx.compose.ui.Modifier
           import androidx.compose.ui.draw.clip
           import androidx.compose.ui.geometry.Offset
-          import androidx.compose.ui.geometry.Rect
+          import androidx.compose.ui.geometry.Size
           import androidx.compose.ui.graphics.Color
           import androidx.compose.ui.graphics.Path
           import androidx.compose.ui.graphics.StrokeCap
           import androidx.compose.ui.graphics.StrokeJoin
           import androidx.compose.ui.graphics.drawscope.Stroke
-          import androidx.compose.ui.platform.LocalContext
           import androidx.compose.ui.text.font.FontWeight
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
@@ -680,13 +976,26 @@ jobs:
           import kotlin.math.cos
           import kotlin.math.sin
 
-          private val DarkBackground = Color(0xFF080A0F)
-          private val SurfaceColor = Color(0xFF11151C)
-          private val SurfaceColor2 = Color(0xFF181D26)
-          private val Emerald = Color(0xFF19D98A)
-          private val WarningRed = Color(0xFFFF4D5A)
-          private val White = Color(0xFFF4F7FA)
-          private val Gray = Color(0xFF89919F)
+          private val DarkBackground =
+              Color(0xFF080A0F)
+
+          private val SurfaceColor =
+              Color(0xFF11151C)
+
+          private val SurfaceColor2 =
+              Color(0xFF181D26)
+
+          private val Emerald =
+              Color(0xFF19D98A)
+
+          private val WarningRed =
+              Color(0xFFFF4D5A)
+
+          private val White =
+              Color(0xFFF4F7FA)
+
+          private val Gray =
+              Color(0xFF89919F)
 
           data class Exercise(
               val title: String,
@@ -697,42 +1006,48 @@ jobs:
               val type: Int
           )
 
-          private val exercises = listOf(
-              Exercise(
-                  "Chin Tucks",
-                  "Sit tall and gently draw your chin straight backward, creating a small double chin. Keep your eyes level and avoid looking down.",
-                  "Deep neck flexors",
-                  "Do not tilt your head downward or push the chin forward.",
-                  30,
-                  0
-              ),
-              Exercise(
-                  "Doorway Stretch",
-                  "Place your forearms on both sides of a doorway and step forward gently until a comfortable chest stretch is felt.",
-                  "Pectoralis major and minor",
-                  "Avoid forcing the shoulders forward or arching the lower back.",
-                  30,
-                  1
-              ),
-              Exercise(
-                  "Wall Angels",
-                  "Stand against a wall with your head, upper back and hips supported. Slowly slide your arms upward while maintaining comfortable contact.",
-                  "Upper back and shoulder stabilizers",
-                  "Do not shrug your shoulders or force your wrists against the wall.",
-                  30,
-                  2
-              ),
-              Exercise(
-                  "Trapezius Stretch",
-                  "Sit upright. Gently bring one ear toward the same-side shoulder while keeping the opposite shoulder relaxed.",
-                  "Upper trapezius",
-                  "Do not pull aggressively on the head.",
-                  30,
-                  3
-              )
-          )
+          private val exercises =
+              listOf(
 
-          class MainActivity : ComponentActivity() {
+                  Exercise(
+                      "Chin Tucks",
+                      "Sit tall and gently draw your chin straight backward, creating a small double chin. Keep your eyes level and avoid looking down.",
+                      "Deep neck flexors",
+                      "Do not tilt your head downward or push the chin forward.",
+                      30,
+                      0
+                  ),
+
+                  Exercise(
+                      "Doorway Stretch",
+                      "Place your forearms on both sides of a doorway and step forward gently until a comfortable chest stretch is felt.",
+                      "Pectoralis major and minor",
+                      "Avoid forcing the shoulders forward or arching the lower back.",
+                      30,
+                      1
+                  ),
+
+                  Exercise(
+                      "Wall Angels",
+                      "Stand against a wall with your head, upper back and hips supported. Slowly slide your arms upward while maintaining comfortable contact.",
+                      "Upper back and shoulder stabilizers",
+                      "Do not shrug your shoulders or force your wrists against the wall.",
+                      30,
+                      2
+                  ),
+
+                  Exercise(
+                      "Trapezius Stretch",
+                      "Sit upright. Gently bring one ear toward the same-side shoulder while keeping the opposite shoulder relaxed.",
+                      "Upper trapezius",
+                      "Do not pull aggressively on the head.",
+                      30,
+                      3
+                  )
+              )
+
+          class MainActivity :
+              ComponentActivity() {
 
               private val notificationPermissionLauncher =
                   registerForActivityResult(
@@ -741,7 +1056,9 @@ jobs:
                       startMonitoringService()
                   }
 
-              override fun onCreate(savedInstanceState: Bundle?) {
+              override fun onCreate(
+                  savedInstanceState: Bundle?
+              ) {
                   super.onCreate(savedInstanceState)
 
                   window.setFlags(
@@ -750,6 +1067,7 @@ jobs:
                   )
 
                   setContent {
+
                       SafePostureApp(
                           onStartMonitoring = {
                               requestNotificationPermissionAndStart()
@@ -762,44 +1080,61 @@ jobs:
               }
 
               private fun requestNotificationPermissionAndStart() {
+
                   if (
-                      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                      Build.VERSION.SDK_INT >=
+                      Build.VERSION_CODES.TIRAMISU &&
                       ContextCompat.checkSelfPermission(
                           this,
                           Manifest.permission.POST_NOTIFICATIONS
                       ) != PackageManager.PERMISSION_GRANTED
                   ) {
+
                       notificationPermissionLauncher.launch(
                           Manifest.permission.POST_NOTIFICATIONS
                       )
+
                   } else {
+
                       startMonitoringService()
                   }
               }
 
               private fun startMonitoringService() {
+
                   val intent =
                       Intent(
                           this,
                           PostureMonitorService::class.java
                       ).apply {
-                          action = PostureMonitorService.ACTION_START
+
+                          action =
+                              PostureMonitorService.ACTION_START
                       }
 
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                  if (
+                      Build.VERSION.SDK_INT >=
+                      Build.VERSION_CODES.O
+                  ) {
+
                       startForegroundService(intent)
+
                   } else {
+
                       startService(intent)
                   }
               }
 
               private fun stopMonitoringService() {
+
                   val intent =
                       Intent(
                           this,
                           PostureMonitorService::class.java
                       ).apply {
-                          action = PostureMonitorService.ACTION_STOP
+
+                          action =
+                              PostureMonitorService.ACTION_STOP
                       }
 
                   startService(intent)
@@ -811,24 +1146,34 @@ jobs:
               onStartMonitoring: () -> Unit,
               onStopMonitoring: () -> Unit
           ) {
+
               var selectedTab by remember {
                   mutableIntStateOf(0)
               }
 
               MaterialTheme {
+
                   Surface(
                       modifier = Modifier.fillMaxSize(),
                       color = DarkBackground
                   ) {
+
                       Column(
-                          modifier = Modifier.fillMaxSize()
+                          modifier =
+                              Modifier.fillMaxSize()
                       ) {
+
                           if (selectedTab == 0) {
+
                               HomeScreen(
-                                  onStartMonitoring = onStartMonitoring,
-                                  onStopMonitoring = onStopMonitoring
+                                  onStartMonitoring =
+                                      onStartMonitoring,
+                                  onStopMonitoring =
+                                      onStopMonitoring
                               )
+
                           } else {
+
                               ExercisesScreen()
                           }
 
@@ -848,6 +1193,7 @@ jobs:
               onStartMonitoring: () -> Unit,
               onStopMonitoring: () -> Unit
           ) {
+
               var monitoring by remember {
                   mutableStateOf(false)
               }
@@ -857,46 +1203,59 @@ jobs:
               }
 
               LaunchedEffect(monitoring) {
+
                   while (monitoring) {
+
                       delay(80)
+
                       simulatedAngle =
                           (simulatedAngle + 0.35f)
-                              .let {
-                                  if (it > 30f) {
+                              .let { value ->
+
+                                  if (value > 30f) {
                                       5f
                                   } else {
-                                      it
+                                      value
                                   }
                               }
                   }
               }
 
-              val animatedAngle by animateFloatAsState(
-                  targetValue = simulatedAngle,
-                  animationSpec = tween(400),
-                  label = "angle"
-              )
+              val animatedAngle by
+                  animateFloatAsState(
+                      targetValue = simulatedAngle,
+                      animationSpec = tween(400),
+                      label = "angle"
+                  )
 
-              val postureColor by animateColorAsState(
-                  targetValue =
-                      if (animatedAngle >= 25f) {
-                          WarningRed
-                      } else {
-                          Emerald
-                      },
-                  animationSpec = tween(400),
-                  label = "postureColor"
-              )
+              val postureColor by
+                  animateColorAsState(
+                      targetValue =
+                          if (animatedAngle >= 25f) {
+                              WarningRed
+                          } else {
+                              Emerald
+                          },
+                      animationSpec = tween(400),
+                      label = "postureColor"
+                  )
 
               LazyColumn(
-                  modifier = Modifier
-                      .weight(1f)
-                      .fillMaxWidth()
-                      .padding(horizontal = 20.dp),
-                  horizontalAlignment = Alignment.CenterHorizontally
+                  modifier =
+                      Modifier
+                          .weight(1f)
+                          .fillMaxWidth()
+                          .padding(horizontal = 20.dp),
+                  horizontalAlignment =
+                      Alignment.CenterHorizontally
               ) {
+
                   item {
-                      Spacer(modifier = Modifier.height(32.dp))
+
+                      Spacer(
+                          modifier =
+                              Modifier.height(32.dp)
+                      )
 
                       Text(
                           text = "SafePosture",
@@ -906,20 +1265,30 @@ jobs:
                       )
 
                       Text(
-                          text = "Posture intelligence for your phone",
+                          text =
+                              "Posture intelligence for your phone",
                           color = Gray,
                           fontSize = 14.sp,
-                          modifier = Modifier.padding(top = 6.dp)
+                          modifier =
+                              Modifier.padding(
+                                  top = 6.dp
+                              )
                       )
 
-                      Spacer(modifier = Modifier.height(26.dp))
+                      Spacer(
+                          modifier =
+                              Modifier.height(26.dp)
+                      )
 
                       PostureCard(
                           angle = animatedAngle,
                           postureColor = postureColor
                       )
 
-                      Spacer(modifier = Modifier.height(20.dp))
+                      Spacer(
+                          modifier =
+                              Modifier.height(20.dp)
+                      )
 
                       Text(
                           text =
@@ -933,7 +1302,10 @@ jobs:
                           fontWeight = FontWeight.Bold
                       )
 
-                      Spacer(modifier = Modifier.height(6.dp))
+                      Spacer(
+                          modifier =
+                              Modifier.height(6.dp)
+                      )
 
                       Text(
                           text =
@@ -946,30 +1318,42 @@ jobs:
                           fontSize = 13.sp
                       )
 
-                      Spacer(modifier = Modifier.height(22.dp))
+                      Spacer(
+                          modifier =
+                              Modifier.height(22.dp)
+                      )
 
                       Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement = Arrangement.spacedBy(12.dp)
+                          modifier =
+                              Modifier.fillMaxWidth(),
+                          horizontalArrangement =
+                              Arrangement.spacedBy(12.dp)
                       ) {
+
                           StatCard(
                               title = "ANGLE",
                               value =
                                   "${animatedAngle.toInt()}°",
-                              modifier = Modifier.weight(1f)
+                              modifier =
+                                  Modifier.weight(1f)
                           )
 
                           StatCard(
                               title = "ALERT",
                               value = "2 sec",
-                              modifier = Modifier.weight(1f)
+                              modifier =
+                                  Modifier.weight(1f)
                           )
                       }
 
-                      Spacer(modifier = Modifier.height(20.dp))
+                      Spacer(
+                          modifier =
+                              Modifier.height(20.dp)
+                      )
 
                       Button(
                           onClick = {
+
                               monitoring = !monitoring
 
                               if (monitoring) {
@@ -978,20 +1362,25 @@ jobs:
                                   onStopMonitoring()
                               }
                           },
-                          modifier = Modifier
-                              .fillMaxWidth()
-                              .height(54.dp),
-                          shape = RoundedCornerShape(16.dp),
-                          colors = ButtonDefaults.buttonColors(
-                              containerColor =
-                                  if (monitoring) {
-                                      WarningRed
-                                  } else {
-                                      Emerald
-                                  },
-                              contentColor = DarkBackground
-                          )
+                          modifier =
+                              Modifier
+                                  .fillMaxWidth()
+                                  .height(54.dp),
+                          shape =
+                              RoundedCornerShape(16.dp),
+                          colors =
+                              ButtonDefaults.buttonColors(
+                                  containerColor =
+                                      if (monitoring) {
+                                          WarningRed
+                                      } else {
+                                          Emerald
+                                      },
+                                  contentColor =
+                                      DarkBackground
+                              )
                       ) {
+
                           Icon(
                               imageVector =
                                   if (monitoring) {
@@ -1002,7 +1391,10 @@ jobs:
                               contentDescription = null
                           )
 
-                          Spacer(modifier = Modifier.width(8.dp))
+                          Spacer(
+                              modifier =
+                                  Modifier.width(8.dp)
+                          )
 
                           Text(
                               text =
@@ -1011,19 +1403,27 @@ jobs:
                                   } else {
                                       "Start monitoring"
                                   },
-                              fontWeight = FontWeight.Bold
+                              fontWeight =
+                                  FontWeight.Bold
                           )
                       }
 
-                      Spacer(modifier = Modifier.height(16.dp))
+                      Spacer(
+                          modifier =
+                              Modifier.height(16.dp)
+                      )
 
                       Text(
-                          text = "Monitoring continues while SafePosture is running as a foreground service.",
+                          text =
+                              "Monitoring continues while SafePosture is running as a foreground service.",
                           color = Gray,
                           fontSize = 11.sp
                       )
 
-                      Spacer(modifier = Modifier.height(24.dp))
+                      Spacer(
+                          modifier =
+                              Modifier.height(24.dp)
+                      )
                   }
               }
           }
@@ -1033,19 +1433,27 @@ jobs:
               angle: Float,
               postureColor: Color
           ) {
+
               Box(
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .height(350.dp)
-                      .clip(RoundedCornerShape(28.dp))
-                      .background(SurfaceColor),
-                  contentAlignment = Alignment.Center
+                  modifier =
+                      Modifier
+                          .fillMaxWidth()
+                          .height(350.dp)
+                          .clip(
+                              RoundedCornerShape(28.dp)
+                          )
+                          .background(SurfaceColor),
+                  contentAlignment =
+                      Alignment.Center
               ) {
+
                   Canvas(
-                      modifier = Modifier
-                          .fillMaxSize()
-                          .padding(25.dp)
+                      modifier =
+                          Modifier
+                              .fillMaxSize()
+                              .padding(25.dp)
                   ) {
+
                       drawPersonPosture(
                           angle = angle,
                           color = postureColor
@@ -1054,13 +1462,21 @@ jobs:
               }
           }
 
-          private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPersonPosture(
-              angle: Float,
-              color: Color
-          ) {
-              val centerX = size.width / 2f
-              val shoulderY = size.height * 0.42f
-              val hipY = size.height * 0.68f
+          private fun
+              androidx.compose.ui.graphics.drawscope.DrawScope
+              .drawPersonPosture(
+                  angle: Float,
+                  color: Color
+              ) {
+
+              val centerX =
+                  size.width / 2f
+
+              val shoulderY =
+                  size.height * 0.42f
+
+              val hipY =
+                  size.height * 0.68f
 
               val bend =
                   (angle / 30f)
@@ -1074,54 +1490,74 @@ jobs:
                       neckAngle.toDouble()
                   )
 
-              val neckLength = size.height * 0.12f
+              val neckLength =
+                  size.height * 0.12f
 
               val headX =
                   centerX +
-                      (sin(radians) * neckLength).toFloat()
+                      (
+                          sin(radians) *
+                              neckLength
+                          ).toFloat()
 
               val headY =
                   shoulderY -
-                      (cos(radians) * neckLength).toFloat()
+                      (
+                          cos(radians) *
+                              neckLength
+                          ).toFloat()
 
-              val spinePath = Path().apply {
-                  moveTo(centerX, shoulderY)
-                  cubicTo(
-                      centerX - 8f,
-                      shoulderY + 35f,
-                      centerX + 8f,
-                      hipY - 35f,
-                      centerX,
-                      hipY
-                  )
-              }
+              val spinePath =
+                  Path().apply {
+
+                      moveTo(
+                          centerX,
+                          shoulderY
+                      )
+
+                      cubicTo(
+                          centerX - 8f,
+                          shoulderY + 35f,
+                          centerX + 8f,
+                          hipY - 35f,
+                          centerX,
+                          hipY
+                      )
+                  }
 
               drawPath(
                   path = spinePath,
                   color = color,
-                  style = Stroke(
-                      width = 12f,
-                      cap = StrokeCap.Round,
-                      join = StrokeJoin.Round
-                  )
+                  style =
+                      Stroke(
+                          width = 12f,
+                          cap = StrokeCap.Round,
+                          join = StrokeJoin.Round
+                      )
               )
 
               drawCircle(
                   color = color,
                   radius = 25f,
-                  center = Offset(headX, headY)
+                  center =
+                      Offset(
+                          headX,
+                          headY
+                      )
               )
 
               val shoulderLeft =
                   Offset(
                       centerX - 65f,
-                      shoulderY + bend * 12f
+                      shoulderY +
+                          bend * 12f
                   )
 
               val shoulderRight =
                   Offset(
                       centerX + 65f,
-                      shoulderY - bend * 12f
+                      shoulderY -
+                          bend * 12f
                   )
 
               drawLine(
@@ -1135,10 +1571,11 @@ jobs:
               drawLine(
                   color = color,
                   start = shoulderLeft,
-                  end = Offset(
-                      centerX - 100f,
-                      shoulderY + 90f
-                  ),
+                  end =
+                      Offset(
+                          centerX - 100f,
+                          shoulderY + 90f
+                      ),
                   strokeWidth = 10f,
                   cap = StrokeCap.Round
               )
@@ -1146,49 +1583,60 @@ jobs:
               drawLine(
                   color = color,
                   start = shoulderRight,
-                  end = Offset(
-                      centerX + 100f,
-                      shoulderY + 90f
-                  ),
+                  end =
+                      Offset(
+                          centerX + 100f,
+                          shoulderY + 90f
+                      ),
                   strokeWidth = 10f,
                   cap = StrokeCap.Round
               )
 
               drawLine(
                   color = color,
-                  start = Offset(
-                      centerX,
-                      hipY
-                  ),
-                  end = Offset(
-                      centerX - 65f,
-                      size.height * 0.88f
-                  ),
+                  start =
+                      Offset(
+                          centerX,
+                          hipY
+                      ),
+                  end =
+                      Offset(
+                          centerX - 65f,
+                          size.height * 0.88f
+                      ),
                   strokeWidth = 12f,
                   cap = StrokeCap.Round
               )
 
               drawLine(
                   color = color,
-                  start = Offset(
-                      centerX,
-                      hipY
-                  ),
-                  end = Offset(
-                      centerX + 65f,
-                      size.height * 0.88f
-                  ),
+                  start =
+                      Offset(
+                          centerX,
+                          hipY
+                      ),
+                  end =
+                      Offset(
+                          centerX + 65f,
+                          size.height * 0.88f
+                      ),
                   strokeWidth = 12f,
                   cap = StrokeCap.Round
               )
 
               drawCircle(
-                  color = color.copy(alpha = 0.12f),
-                  radius = 90f + bend * 30f,
-                  center = Offset(
-                      centerX,
-                      shoulderY + 25f
-                  )
+                  color =
+                      color.copy(
+                          alpha = 0.12f
+                      ),
+                  radius =
+                      90f +
+                          bend * 30f,
+                  center =
+                      Offset(
+                          centerX,
+                          shoulderY + 25f
+                      )
               )
           }
 
@@ -1198,64 +1646,103 @@ jobs:
               value: String,
               modifier: Modifier
           ) {
+
               Column(
-                  modifier = modifier
-                      .clip(RoundedCornerShape(18.dp))
-                      .background(SurfaceColor2)
-                      .padding(16.dp)
+                  modifier =
+                      modifier
+                          .clip(
+                              RoundedCornerShape(18.dp)
+                          )
+                          .background(
+                              SurfaceColor2
+                          )
+                          .padding(16.dp)
               ) {
+
                   Text(
                       text = title,
                       color = Gray,
                       fontSize = 11.sp,
-                      fontWeight = FontWeight.Bold
+                      fontWeight =
+                          FontWeight.Bold
                   )
 
-                  Spacer(modifier = Modifier.height(6.dp))
+                  Spacer(
+                      modifier =
+                          Modifier.height(6.dp)
+                  )
 
                   Text(
                       text = value,
                       color = White,
                       fontSize = 21.sp,
-                      fontWeight = FontWeight.Bold
+                      fontWeight =
+                          FontWeight.Bold
                   )
               }
           }
 
           @Composable
           fun ExercisesScreen() {
+
               LazyColumn(
-                  modifier = Modifier
-                      .weight(1f)
-                      .fillMaxWidth()
-                      .padding(horizontal = 20.dp),
-                  horizontalAlignment = Alignment.Start
+                  modifier =
+                      Modifier
+                          .weight(1f)
+                          .fillMaxWidth()
+                          .padding(
+                              horizontal = 20.dp
+                          ),
+                  horizontalAlignment =
+                      Alignment.Start
               ) {
+
                   item {
-                      Spacer(modifier = Modifier.height(30.dp))
+
+                      Spacer(
+                          modifier =
+                              Modifier.height(30.dp)
+                      )
 
                       Text(
                           text = "Exercises",
                           color = White,
                           fontSize = 30.sp,
-                          fontWeight = FontWeight.Bold
+                          fontWeight =
+                              FontWeight.Bold
                       )
 
                       Text(
-                          text = "Gentle exercises for better neck and upper-body posture.",
+                          text =
+                              "Gentle exercises for better neck and upper-body posture.",
                           color = Gray,
                           fontSize = 14.sp,
-                          modifier = Modifier.padding(top = 6.dp, bottom = 22.dp)
+                          modifier =
+                              Modifier.padding(
+                                  top = 6.dp,
+                                  bottom = 22.dp
+                              )
                       )
                   }
 
                   items(exercises) { exercise ->
-                      ExerciseCard(exercise)
-                      Spacer(modifier = Modifier.height(16.dp))
+
+                      ExerciseCard(
+                          exercise = exercise
+                      )
+
+                      Spacer(
+                          modifier =
+                              Modifier.height(16.dp)
+                      )
                   }
 
                   item {
-                      Spacer(modifier = Modifier.height(10.dp))
+
+                      Spacer(
+                          modifier =
+                              Modifier.height(10.dp)
+                      )
                   }
               }
           }
@@ -1264,8 +1751,11 @@ jobs:
           fun ExerciseCard(
               exercise: Exercise
           ) {
+
               var remaining by remember {
-                  mutableIntStateOf(exercise.seconds)
+                  mutableIntStateOf(
+                      exercise.seconds
+                  )
               }
 
               var running by remember {
@@ -1273,8 +1763,14 @@ jobs:
               }
 
               LaunchedEffect(running) {
-                  while (running && remaining > 0) {
+
+                  while (
+                      running &&
+                      remaining > 0
+                  ) {
+
                       delay(1000)
+
                       remaining -= 1
                   }
 
@@ -1284,103 +1780,156 @@ jobs:
               }
 
               Column(
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .clip(RoundedCornerShape(24.dp))
-                      .background(SurfaceColor)
-                      .padding(18.dp)
+                  modifier =
+                      Modifier
+                          .fillMaxWidth()
+                          .clip(
+                              RoundedCornerShape(24.dp)
+                          )
+                          .background(
+                              SurfaceColor
+                          )
+                          .padding(18.dp)
               ) {
+
                   Text(
                       text = exercise.title,
                       color = White,
                       fontSize = 20.sp,
-                      fontWeight = FontWeight.Bold
+                      fontWeight =
+                          FontWeight.Bold
                   )
 
-                  Spacer(modifier = Modifier.height(14.dp))
+                  Spacer(
+                      modifier =
+                          Modifier.height(14.dp)
+                  )
 
                   ExerciseIllustration(
                       type = exercise.type
                   )
 
-                  Spacer(modifier = Modifier.height(14.dp))
+                  Spacer(
+                      modifier =
+                          Modifier.height(14.dp)
+                  )
 
                   Text(
-                      text = exercise.description,
+                      text =
+                          exercise.description,
                       color = White,
                       fontSize = 14.sp,
                       lineHeight = 21.sp
                   )
 
-                  Spacer(modifier = Modifier.height(12.dp))
+                  Spacer(
+                      modifier =
+                          Modifier.height(12.dp)
+                  )
 
                   Text(
                       text = "TARGET MUSCLE",
                       color = Emerald,
                       fontSize = 10.sp,
-                      fontWeight = FontWeight.Bold
+                      fontWeight =
+                          FontWeight.Bold
                   )
 
                   Text(
                       text = exercise.muscle,
                       color = White,
                       fontSize = 13.sp,
-                      modifier = Modifier.padding(top = 3.dp)
+                      modifier =
+                          Modifier.padding(
+                              top = 3.dp
+                          )
                   )
 
-                  Spacer(modifier = Modifier.height(12.dp))
+                  Spacer(
+                      modifier =
+                          Modifier.height(12.dp)
+                  )
 
                   Text(
                       text = "COMMON MISTAKE",
                       color = WarningRed,
                       fontSize = 10.sp,
-                      fontWeight = FontWeight.Bold
+                      fontWeight =
+                          FontWeight.Bold
                   )
 
                   Text(
                       text = exercise.mistake,
                       color = Gray,
                       fontSize = 13.sp,
-                      modifier = Modifier.padding(top = 3.dp)
+                      modifier =
+                          Modifier.padding(
+                              top = 3.dp
+                          )
                   )
 
-                  Spacer(modifier = Modifier.height(18.dp))
+                  Spacer(
+                      modifier =
+                          Modifier.height(18.dp)
+                  )
 
                   Text(
                       text = "${remaining}s",
                       color = White,
                       fontSize = 28.sp,
-                      fontWeight = FontWeight.Bold,
-                      modifier = Modifier.align(Alignment.CenterHorizontally)
+                      fontWeight =
+                          FontWeight.Bold,
+                      modifier =
+                          Modifier.align(
+                              Alignment.CenterHorizontally
+                          )
                   )
 
-                  Spacer(modifier = Modifier.height(10.dp))
+                  Spacer(
+                      modifier =
+                          Modifier.height(10.dp)
+                  )
 
                   Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.spacedBy(10.dp)
+                      modifier =
+                          Modifier.fillMaxWidth(),
+                      horizontalArrangement =
+                          Arrangement.spacedBy(10.dp)
                   ) {
+
                       Button(
                           onClick = {
+
                               if (remaining <= 0) {
-                                  remaining = exercise.seconds
+                                  remaining =
+                                      exercise.seconds
                               }
 
                               running = !running
                           },
-                          modifier = Modifier.weight(1f),
-                          shape = RoundedCornerShape(14.dp),
-                          colors = ButtonDefaults.buttonColors(
-                              containerColor = Emerald,
-                              contentColor = DarkBackground
-                          )
+                          modifier =
+                              Modifier.weight(1f),
+                          shape =
+                              RoundedCornerShape(14.dp),
+                          colors =
+                              ButtonDefaults.buttonColors(
+                                  containerColor =
+                                      Emerald,
+                                  contentColor =
+                                      DarkBackground
+                              )
                       ) {
+
                           Icon(
-                              imageVector = Icons.Default.PlayArrow,
+                              imageVector =
+                                  Icons.Default.PlayArrow,
                               contentDescription = null
                           )
 
-                          Spacer(modifier = Modifier.width(5.dp))
+                          Spacer(
+                              modifier =
+                                  Modifier.width(5.dp)
+                          )
 
                           Text(
                               text =
@@ -1389,22 +1938,32 @@ jobs:
                                   } else {
                                       "Start"
                                   },
-                              fontWeight = FontWeight.Bold
+                              fontWeight =
+                                  FontWeight.Bold
                           )
                       }
 
                       Button(
                           onClick = {
+
                               running = false
-                              remaining = exercise.seconds
+
+                              remaining =
+                                  exercise.seconds
                           },
-                          modifier = Modifier.weight(1f),
-                          shape = RoundedCornerShape(14.dp),
-                          colors = ButtonDefaults.buttonColors(
-                              containerColor = SurfaceColor2,
-                              contentColor = White
-                          )
+                          modifier =
+                              Modifier.weight(1f),
+                          shape =
+                              RoundedCornerShape(14.dp),
+                          colors =
+                              ButtonDefaults.buttonColors(
+                                  containerColor =
+                                      SurfaceColor2,
+                                  contentColor =
+                                      White
+                              )
                       ) {
+
                           Text("Reset")
                       }
                   }
@@ -1415,173 +1974,333 @@ jobs:
           fun ExerciseIllustration(
               type: Int
           ) {
-              Box(
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .height(170.dp)
-                      .clip(RoundedCornerShape(18.dp))
-                      .background(SurfaceColor2)
-              ) {
-                  Canvas(
-                      modifier = Modifier.fillMaxSize()
-                  ) {
-                      val cx = size.width / 2f
-                      val cy = size.height / 2f
 
-                      val lineColor = Emerald
+              Box(
+                  modifier =
+                      Modifier
+                          .fillMaxWidth()
+                          .height(170.dp)
+                          .clip(
+                              RoundedCornerShape(18.dp)
+                          )
+                          .background(
+                              SurfaceColor2
+                          )
+              ) {
+
+                  Canvas(
+                      modifier =
+                          Modifier.fillMaxSize()
+                  ) {
+
+                      val cx =
+                          size.width / 2f
+
+                      val lineColor =
+                          Emerald
 
                       when (type) {
+
                           0 -> {
+
                               drawCircle(
                                   color = lineColor,
                                   radius = 24f,
-                                  center = Offset(cx, cy - 38f)
+                                  center =
+                                      Offset(
+                                          cx,
+                                          size.height / 2f - 38f
+                                      )
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, cy - 14f),
-                                  end = Offset(cx, cy + 45f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          size.height / 2f - 14f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx,
+                                          size.height / 2f + 45f
+                                      ),
                                   strokeWidth = 10f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, cy + 2f),
-                                  end = Offset(cx - 48f, cy + 25f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          size.height / 2f + 2f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx - 48f,
+                                          size.height / 2f + 25f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, cy + 2f),
-                                  end = Offset(cx + 48f, cy + 25f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          size.height / 2f + 2f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx + 48f,
+                                          size.height / 2f + 25f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
                           }
 
                           1 -> {
+
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(70f, 25f),
-                                  end = Offset(70f, size.height - 25f),
+                                  start =
+                                      Offset(
+                                          70f,
+                                          25f
+                                      ),
+                                  end =
+                                      Offset(
+                                          70f,
+                                          size.height - 25f
+                                      ),
                                   strokeWidth = 8f
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(size.width - 70f, 25f),
-                                  end = Offset(size.width - 70f, size.height - 25f),
+                                  start =
+                                      Offset(
+                                          size.width - 70f,
+                                          25f
+                                      ),
+                                  end =
+                                      Offset(
+                                          size.width - 70f,
+                                          size.height - 25f
+                                      ),
                                   strokeWidth = 8f
                               )
 
                               drawCircle(
                                   color = lineColor,
                                   radius = 23f,
-                                  center = Offset(cx, 50f)
+                                  center =
+                                      Offset(
+                                          cx,
+                                          50f
+                                      )
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 74f),
-                                  end = Offset(cx, 130f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          74f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx,
+                                          130f
+                                      ),
                                   strokeWidth = 10f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 85f),
-                                  end = Offset(95f, 55f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          85f
+                                      ),
+                                  end =
+                                      Offset(
+                                          95f,
+                                          55f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 85f),
-                                  end = Offset(size.width - 95f, 55f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          85f
+                                      ),
+                                  end =
+                                      Offset(
+                                          size.width - 95f,
+                                          55f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
                           }
 
                           2 -> {
+
                               drawRect(
-                                  color = lineColor.copy(alpha = 0.25f),
-                                  topLeft = Offset(
-                                      cx - 5f,
-                                      10f
-                                  ),
-                                  size = androidx.compose.ui.geometry.Size(
-                                      10f,
-                                      size.height - 20f
-                                  )
+                                  color =
+                                      lineColor.copy(
+                                          alpha = 0.25f
+                                      ),
+                                  topLeft =
+                                      Offset(
+                                          cx - 5f,
+                                          10f
+                                      ),
+                                  size =
+                                      Size(
+                                          10f,
+                                          size.height - 20f
+                                      )
                               )
 
                               drawCircle(
                                   color = lineColor,
                                   radius = 22f,
-                                  center = Offset(cx, 38f)
+                                  center =
+                                      Offset(
+                                          cx,
+                                          38f
+                                      )
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 61f),
-                                  end = Offset(cx, 125f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          61f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx,
+                                          125f
+                                      ),
                                   strokeWidth = 10f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 75f),
-                                  end = Offset(cx - 55f, 42f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          75f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx - 55f,
+                                          42f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 75f),
-                                  end = Offset(cx + 55f, 42f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          75f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx + 55f,
+                                          42f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
                           }
 
                           else -> {
+
                               drawCircle(
                                   color = lineColor,
                                   radius = 23f,
-                                  center = Offset(cx, 38f)
+                                  center =
+                                      Offset(
+                                          cx,
+                                          38f
+                                      )
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 61f),
-                                  end = Offset(cx, 130f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          61f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx,
+                                          130f
+                                      ),
                                   strokeWidth = 10f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 75f),
-                                  end = Offset(cx - 60f, 90f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          75f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx - 60f,
+                                          90f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
 
                               drawLine(
                                   color = lineColor,
-                                  start = Offset(cx, 75f),
-                                  end = Offset(cx + 50f, 115f),
+                                  start =
+                                      Offset(
+                                          cx,
+                                          75f
+                                      ),
+                                  end =
+                                      Offset(
+                                          cx + 50f,
+                                          115f
+                                      ),
                                   strokeWidth = 8f,
-                                  cap = StrokeCap.Round
+                                  cap =
+                                      StrokeCap.Round
                               )
                           }
                       }
@@ -1594,20 +2313,27 @@ jobs:
               selectedTab: Int,
               onTabSelected: (Int) -> Unit
           ) {
+
               Row(
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .background(SurfaceColor)
-                      .padding(
-                          horizontal = 20.dp,
-                          vertical = 12.dp
-                      ),
+                  modifier =
+                      Modifier
+                          .fillMaxWidth()
+                          .background(
+                              SurfaceColor
+                          )
+                          .padding(
+                              horizontal = 20.dp,
+                              vertical = 12.dp
+                          ),
                   horizontalArrangement =
                       Arrangement.SpaceEvenly
               ) {
+
                   NavigationItem(
-                      selected = selectedTab == 0,
+                      selected =
+                          selectedTab == 0,
                       icon = {
+
                           Icon(
                               Icons.Default.Home,
                               contentDescription = null
@@ -1620,8 +2346,10 @@ jobs:
                   )
 
                   NavigationItem(
-                      selected = selectedTab == 1,
+                      selected =
+                          selectedTab == 1,
                       icon = {
+
                           Icon(
                               Icons.Default.List,
                               contentDescription = null
@@ -1642,6 +2370,7 @@ jobs:
               label: String,
               onClick: () -> Unit
           ) {
+
               val interactionSource =
                   remember {
                       MutableInteractionSource()
@@ -1650,21 +2379,28 @@ jobs:
               Column(
                   horizontalAlignment =
                       Alignment.CenterHorizontally,
-                  modifier = Modifier
-                      .clip(RoundedCornerShape(14.dp))
-                      .clickable(
-                          interactionSource = interactionSource,
-                          indication = null,
-                          onClick = onClick
-                      )
-                      .padding(
-                          horizontal = 24.dp,
-                          vertical = 6.dp
-                      )
+                  modifier =
+                      Modifier
+                          .clip(
+                              RoundedCornerShape(14.dp)
+                          )
+                          .clickable(
+                              interactionSource =
+                                  interactionSource,
+                              indication = null,
+                              onClick = onClick
+                          )
+                          .padding(
+                              horizontal = 24.dp,
+                              vertical = 6.dp
+                          )
               ) {
+
                   Box(
-                      modifier = Modifier.size(26.dp),
-                      contentAlignment = Alignment.Center
+                      modifier =
+                          Modifier.size(26.dp),
+                      contentAlignment =
+                          Alignment.Center
                   ) {
                       icon()
                   }
@@ -1689,43 +2425,97 @@ jobs:
           }
           EOF
 
-      - name: Install Gradle 8.7 wrapper
+          echo "SafePosture project created successfully."
+
+      # ============================================================
+      # 7. Setup Gradle 8.7
+      #
+      # The project does NOT need a pre-existing Gradle wrapper.
+      # setup-gradle installs Gradle 8.7 directly.
+      # ============================================================
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.7"
+
+      # ============================================================
+      # 8. Show tool versions
+      # ============================================================
+      - name: Verify build tools
         shell: bash
         run: |
           set -e
-          gradle wrapper --gradle-version 8.7 --distribution-type bin
-          chmod +x gradlew
 
-      - name: Configure Gradle
-        uses: gradle/actions/setup-gradle@v3
+          echo "======================================"
+          echo "Java version"
+          echo "======================================"
+          java -version
 
+          echo ""
+          echo "======================================"
+          echo "Gradle version"
+          echo "======================================"
+          gradle --version
+
+          echo ""
+          echo "======================================"
+          echo "Android SDK"
+          echo "======================================"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+
+      # ============================================================
+      # 9. Build APK
+      # ============================================================
       - name: Build debug APK
         shell: bash
         run: |
           set -e
-          ./gradlew --no-daemon clean assembleDebug
 
+          gradle \
+            --no-daemon \
+            --stacktrace \
+            clean \
+            assembleDebug
+
+      # ============================================================
+      # 10. Verify APK
+      # ============================================================
       - name: Verify APK
         shell: bash
         run: |
           set -e
 
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
 
-          if [ ! -f "$APK" ]; then
-            echo "APK was not generated."
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK was not generated."
             exit 1
           fi
 
-          echo "APK generated successfully:"
-          ls -lh "$APK"
+          echo ""
+          echo "======================================"
+          echo "APK BUILD SUCCESSFUL"
+          echo "======================================"
 
+          ls -lh "$APK_PATH"
+
+      # ============================================================
+      # 11. Rename APK
+      # ============================================================
       - name: Rename APK
         shell: bash
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             app/build/outputs/apk/debug/SafePosture-debug.apk
+          set -e
 
+          cp \
+            app/build/outputs/apk/debug/app-debug.apk \
+            app/build/outputs/apk/debug/SafePosture-debug.apk
+
+          echo "SafePosture-debug.apk created."
+
+      # ============================================================
+      # 12. Upload APK
+      # ============================================================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
