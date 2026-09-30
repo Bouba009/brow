@@ -166,7 +166,7 @@ jobs:
           </resources>
           EOF
 
-          # أيقونة التطبيق الرسمية
+          # تصميم أيقونة التطبيق (Vector)
           cat << 'EOF' > app/src/main/res/drawable/ic_browser_logo.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp"
@@ -174,27 +174,18 @@ jobs:
               android:viewportWidth="108"
               android:viewportHeight="108">
               <path
-                  android:fillColor="#0F172A"
+                  android:fillColor="#FF0F172A"
                   android:pathData="M0,0h108v108h-108z"/>
               <path
-                  android:strokeColor="#38BDF8"
-                  android:strokeWidth="3.5"
-                  android:pathData="M54,18 A36,36 0 1,0 54,90 A36,36 0 1,0 54,18 Z"/>
+                  android:fillColor="#FF38BDF8"
+                  android:pathData="M54,20c-18.78,0 -34,15.22 -34,34s15.22,34 34,34 34,-15.22 34,-34 -15.22,-34 -34,-34zM54,82c-15.46,0 -28,-12.54 -28,-28s12.54,-28 28,-28 28,12.54 28,28 -12.54,28 -28,28z"/>
               <path
-                  android:strokeColor="#1E40AF"
-                  android:strokeWidth="2.5"
-                  android:pathData="M18,54 L90,54"/>
-              <path
-                  android:strokeColor="#38BDF8"
-                  android:strokeWidth="2.5"
-                  android:pathData="M54,18 C70,32 70,76 54,90 C38,76 38,32 54,18 Z"/>
-              <path
-                  android:fillColor="#38BDF8"
-                  android:pathData="M57,36 L43,55 L53,55 L49,72 L66,51 L55,51 Z"/>
+                  android:fillColor="#FF38BDF8"
+                  android:pathData="M52,32l-14,24h10l-4,18l18,-24h-10z"/>
           </vector>
           EOF
 
-          # أيقونة مخصصة للإشعارات (أبيض شفاف قياسي 24dp لضمان التوافق التام)
+          # تصميم أيقونة الإشعار الصغيرة
           cat << 'EOF' > app/src/main/res/drawable/ic_notification.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
@@ -452,7 +443,6 @@ jobs:
                   setSystemAlarm(context, alarmManager, reqCode, trigger, message, day, hour, minute)
               }
 
-              // منبه فحص فوري للتجربة بعد 5 ثوانٍ
               fun scheduleTestAlarm(context: Context, delaySeconds: Int = 5) {
                   val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
                   val trigger = System.currentTimeMillis() + (delaySeconds * 1000L)
@@ -505,7 +495,6 @@ jobs:
                   )
 
                   try {
-                      // setAlarmClock يجبر أندرويد على إيقاظ الهاتف وتخطي وضع السبات وعرض أيقونة المنبه
                       val clockInfo = AlarmManager.AlarmClockInfo(triggerTimeMillis, showPending)
                       alarmManager.setAlarmClock(clockInfo, pi)
                   } catch (e: Exception) {
@@ -524,10 +513,9 @@ jobs:
 
           class AlarmReceiver : BroadcastReceiver() {
               override fun onReceive(context: Context, intent: Intent) {
-                  // إيقاظ المعالج فوراً لضمان تشغيل النغمة والاهتزاز والشاشة مغلقة
                   val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
                   val wakeLock = powerManager?.newWakeLock(
-                      PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                      PowerManager.PARTIAL_WAKE_LOCK,
                       "ApexBrowser:AlarmWakeLock"
                   )
                   wakeLock?.acquire(10000L)
@@ -706,14 +694,12 @@ jobs:
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
 
-                  // طلب صلاحية الإشعارات لأندرويد 13 فما فوق
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                       if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                           requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
                       }
                   }
 
-                  // فحص إذن المنبه الدقيق على أندرويد 12 فما فوق
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                       val alarmManager = getSystemService(AlarmManager::class.java)
                       if (!alarmManager.canScheduleExactAlarms()) {
@@ -1170,7 +1156,6 @@ jobs:
                               HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
                               Spacer(modifier = Modifier.height(10.dp))
 
-                              // زر اختبار المنبه المباشر للتأكد أمام عينيك
                               Button(
                                   onClick = {
                                       AlarmScheduler.scheduleTestAlarm(context, 5)
@@ -1184,7 +1169,7 @@ jobs:
                                   shape = RoundedCornerShape(10.dp),
                                   modifier = Modifier.fillMaxWidth()
                               ) {
-                                  Icon(Icons.Default.Alarm, contentDescription = null, tint = Color.White)
+                                  Icon(Icons.Default.Notifications, contentDescription = null, tint = Color.White)
                                   Spacer(modifier = Modifier.width(8.dp))
                                   Text("تجربة المنبه الآن (بعد 5 ثوانٍ)", color = Color.White, fontWeight = FontWeight.Bold)
                               }
@@ -1261,26 +1246,27 @@ jobs:
                                                       autoClickerEnabled = true
                                                   }
                                               } else {
-                                              autoClickerEnabled = true
+                                                  autoClickerEnabled = true
+                                              }
+                                          } else {
+                                              autoClickerEnabled = false
                                           }
-                                      } else {
-                                          autoClickerEnabled = false
-                                      }
-                                  },
-                                  colors = SwitchDefaults.colors(
-                                      checkedThumbColor = Color(0xFFEF4444),
-                                      checkedTrackColor = Color(0x66EF4444)
+                                      },
+                                      colors = SwitchDefaults.colors(
+                                          checkedThumbColor = Color(0xFFEF4444),
+                                          checkedTrackColor = Color(0x66EF4444)
+                                      )
                                   )
+                              }
+
+                              Slider(
+                                  value = clickIntervalMs.toFloat(),
+                                  onValueChange = { clickIntervalMs = it.toLong() },
+                                  valueRange = 200f..4000f,
+                                  steps = 38,
+                                  enabled = autoClickerEnabled
                               )
                           }
-
-                          Slider(
-                              value = clickIntervalMs.toFloat(),
-                              onValueChange = { clickIntervalMs = it.toLong() },
-                              valueRange = 200f..4000f,
-                              steps = 38,
-                              enabled = autoClickerEnabled
-                          )
                       }
                   }
               }
