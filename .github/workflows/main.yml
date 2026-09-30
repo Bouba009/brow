@@ -261,13 +261,51 @@ jobs:
           cat << 'EOF' > app/src/main/java/com/apex/browser/ApexApp.kt
           package com.apex.browser
 
+          import android.app.Activity
           import android.app.Application
+          import android.os.Bundle
 
-          class ApexApp : Application() {
+          class ApexApp : Application(), Application.ActivityLifecycleCallbacks {
+              private var currentActivity: Activity? = null
+              private var activityCount = 0
+              private var isAppInForeground = false
+
               override fun onCreate() {
                   super.onCreate()
+                  registerActivityLifecycleCallbacks(this)
                   AdManager.init(this)
                   AlarmScheduler.scheduleAllAlarms(this)
+              }
+
+              override fun onActivityStarted(activity: Activity) {
+                  currentActivity = activity
+                  activityCount++
+                  if (activityCount == 1 && !isAppInForeground) {
+                      isAppInForeground = true
+                      // يظهر إعلان فتح التطبيق عند العودة من الخلفية
+                      AdManager.showAppOpenAdIfAvailable(activity)
+                  }
+              }
+
+              override fun onActivityStopped(activity: Activity) {
+                  activityCount--
+                  if (activityCount <= 0) {
+                      activityCount = 0
+                      isAppInForeground = false
+                  }
+              }
+
+              override fun onActivityResumed(activity: Activity) {
+                  currentActivity = activity
+              }
+
+              override fun onActivityPaused(activity: Activity) {}
+              override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+              override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+              override fun onActivityDestroyed(activity: Activity) {
+                  if (currentActivity == activity) {
+                      currentActivity = null
+                  }
               }
           }
           EOF
@@ -286,27 +324,93 @@ jobs:
           import com.google.android.gms.ads.appopen.AppOpenAd
           import com.google.android.gms.ads.interstitial.InterstitialAd
           import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
-          import com.google.android.gms.ads.rewarded.RewardedAd
-          import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 
           object AdManager {
               private const val APP_OPEN_AD_ID = "ca-app-pub-7908900046861491/2390254337"
-              private const val VIDEO_REWARDED_ID = "ca-app-pub-7908900046861491/1971451938"
+              private const val VIDEO_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/1971451938"
               private const val REGULAR_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/2270086406"
 
-              private var rewardedAd: RewardedAd? = null
-              private var regularInterstitialAd: InterstitialAd? = null
+              private var appOpenAd: AppOpenAd? = null
+              private var isAppOpenLoading = false
+              private var appOpenLoadTime: Long = 0
 
-              private var isRewardedLoading = false
+              private var videoInterstitialAd: InterstitialAd? = null
+              private var isVideoLoading = false
+
+              private var regularInterstitialAd: InterstitialAd? = null
               private var isRegularLoading = false
+
+              var isShowingAd = false
 
               fun init(context: Context) {
                   MobileAds.initialize(context) {}
-                  loadRewardedAd(context)
+                  loadAppOpenAd(context)
+                  loadVideoInterstitial(context)
                   loadRegularInterstitial(context)
               }
 
-              fun loadAndShowAppOpenAd(activity: Activity) {
+              // 1. نظام إعلان فتح التطبيق (عند البداية والعودة من الخلفية)
+              private fun isAppOpenAdAvailable(): Boolean {
+                  return appOpenAd != null && (System.currentTimeMillis() - appOpenLoadTime) < (4 * 3600 * 1000L)
+              }
+
+              fun loadAppOpenAd(context: Context) {
+                  if (isAppOpenLoading || isAppOpenAdAvailable()) return
+                  isAppOpenLoading = true
+
+                  val request = AdRequest.Builder().build()
+                  AppOpenAd.load(
+                      context,
+                      APP_OPEN_AD_ID,
+                      request,
+                      object : AppOpenAd.AppOpenAdLoadCallback() {
+                          override fun onAdLoaded(ad: AppOpenAd) {
+                              appOpenAd = ad
+                              isAppOpenLoading = false
+                              appOpenLoadTime = System.currentTimeMillis()
+                          }
+                          override fun onAdFailedToLoad(error: LoadAdError) {
+                              isAppOpenLoading = false
+                              appOpenAd = null
+                          }
+                      }
+                  )
+              }
+
+              fun showAppOpenAdIfAvailable(activity: Activity) {
+                  if (isShowingAd) return
+
+                  if (!isAppOpenAdAvailable()) {
+                      loadAppOpenAd(activity)
+                      return
+                  }
+
+                  appOpenAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
+                      override fun onAdDismissedFullScreenContent() {
+                          appOpenAd = null
+                          isShowingAd = false
+                          loadAppOpenAd(activity)
+                      }
+                      override fun onAdFailedToShowFullScreenContent(err: AdError) {
+                          appOpenAd = null
+                          isShowingAd = false
+                          loadAppOpenAd(activity)
+                      }
+                      override fun onAdShowedFullScreenContent() {
+                          isShowingAd = true
+                      }
+                  }
+                  isShowingAd = true
+                  appOpenAd?.show(activity)
+              }
+
+              fun loadAndShowAppOpenAdFirstTime(activity: Activity) {
+                  if (isShowingAd) return
+                  if (isAppOpenAdAvailable()) {
+                      showAppOpenAdIfAvailable(activity)
+                      return
+                  }
+                  isAppOpenLoading = true
                   val request = AdRequest.Builder().build()
                   AppOpenAd.load(
                       activity,
@@ -314,37 +418,53 @@ jobs:
                       request,
                       object : AppOpenAd.AppOpenAdLoadCallback() {
                           override fun onAdLoaded(ad: AppOpenAd) {
-                              ad.show(activity)
-                          }
-                          override fun onAdFailedToLoad(error: LoadAdError) {}
-                      }
-                  )
-              }
-
-              fun loadRewardedAd(context: Context) {
-                  if (rewardedAd != null || isRewardedLoading) return
-                  isRewardedLoading = true
-
-                  val request = AdRequest.Builder().build()
-                  RewardedAd.load(
-                      context,
-                      VIDEO_REWARDED_ID,
-                      request,
-                      object : RewardedAdLoadCallback() {
-                          override fun onAdLoaded(ad: RewardedAd) {
-                              rewardedAd = ad
-                              isRewardedLoading = false
+                              appOpenAd = ad
+                              isAppOpenLoading = false
+                              appOpenLoadTime = System.currentTimeMillis()
+                              showAppOpenAdIfAvailable(activity)
                           }
                           override fun onAdFailedToLoad(error: LoadAdError) {
-                              rewardedAd = null
-                              isRewardedLoading = false
+                              isAppOpenLoading = false
                           }
                       }
                   )
               }
 
-              fun loadRegularInterstitial(context: Context) {
-                  if (regularInterstitialAd != null || isRegularLoading) return
+              // 2. نظام الإعلان البيني للفيديو (Auto Clicker) مع التحميل المسبق
+              fun loadVideoInterstitial(context: Context, onLoaded: (() -> Unit)? = null) {
+                  if (videoInterstitialAd != null) {
+                      onLoaded?.invoke()
+                      return
+                  }
+                  if (isVideoLoading) return
+                  isVideoLoading = true
+
+                  val request = AdRequest.Builder().build()
+                  InterstitialAd.load(
+                      context,
+                      VIDEO_INTERSTITIAL_ID,
+                      request,
+                      object : InterstitialAdLoadCallback() {
+                          override fun onAdLoaded(ad: InterstitialAd) {
+                              videoInterstitialAd = ad
+                              isVideoLoading = false
+                              onLoaded?.invoke()
+                          }
+                          override fun onAdFailedToLoad(error: LoadAdError) {
+                              videoInterstitialAd = null
+                              isVideoLoading = false
+                          }
+                      }
+                  )
+              }
+
+              // 3. نظام الإعلان البيني القياسي مع التحميل المسبق
+              fun loadRegularInterstitial(context: Context, onLoaded: (() -> Unit)? = null) {
+                  if (regularInterstitialAd != null) {
+                      onLoaded?.invoke()
+                      return
+                  }
+                  if (isRegularLoading) return
                   isRegularLoading = true
 
                   val request = AdRequest.Builder().build()
@@ -356,6 +476,7 @@ jobs:
                           override fun onAdLoaded(ad: InterstitialAd) {
                               regularInterstitialAd = ad
                               isRegularLoading = false
+                              onLoaded?.invoke()
                           }
                           override fun onAdFailedToLoad(error: LoadAdError) {
                               regularInterstitialAd = null
@@ -365,43 +486,54 @@ jobs:
                   )
               }
 
+              // تفعيل الـ Auto Clicker: تجربة إعلان الفيديو أولاً، وفي حال التعذر يعوض بالبيني
               fun showAdForAutoClick(activity: Activity, onAdCompleted: () -> Unit) {
-                  if (rewardedAd != null) {
-                      val ad = rewardedAd!!
+                  if (videoInterstitialAd != null) {
+                      val ad = videoInterstitialAd!!
                       ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                           override fun onAdDismissedFullScreenContent() {
-                              rewardedAd = null
-                              loadRewardedAd(activity)
+                              videoInterstitialAd = null
+                              isShowingAd = false
+                              loadVideoInterstitial(activity)
                               onAdCompleted()
                           }
                           override fun onAdFailedToShowFullScreenContent(err: AdError) {
-                              rewardedAd = null
-                              loadRewardedAd(activity)
+                              videoInterstitialAd = null
+                              isShowingAd = false
+                              loadVideoInterstitial(activity)
                               showFallbackInterstitial(activity, onAdCompleted)
                           }
+                          override fun onAdShowedFullScreenContent() {
+                              isShowingAd = true
+                          }
                       }
-                      ad.show(activity) { onAdCompleted() }
+                      ad.show(activity)
                       return
                   }
 
-                  Toast.makeText(activity, "جاري تحضير الإعلان لتفعيل النقر التلقائي...", Toast.LENGTH_SHORT).show()
+                  Toast.makeText(activity, "جاري تحضير الإعلان...", Toast.LENGTH_SHORT).show()
                   val request = AdRequest.Builder().build()
-                  RewardedAd.load(
+                  InterstitialAd.load(
                       activity,
-                      VIDEO_REWARDED_ID,
+                      VIDEO_INTERSTITIAL_ID,
                       request,
-                      object : RewardedAdLoadCallback() {
-                          override fun onAdLoaded(ad: RewardedAd) {
+                      object : InterstitialAdLoadCallback() {
+                          override fun onAdLoaded(ad: InterstitialAd) {
                               ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                                   override fun onAdDismissedFullScreenContent() {
-                                      loadRewardedAd(activity)
+                                      isShowingAd = false
+                                      loadVideoInterstitial(activity)
                                       onAdCompleted()
                                   }
                                   override fun onAdFailedToShowFullScreenContent(err: AdError) {
+                                      isShowingAd = false
                                       showFallbackInterstitial(activity, onAdCompleted)
                                   }
+                                  override fun onAdShowedFullScreenContent() {
+                                      isShowingAd = true
+                                  }
                               }
-                              ad.show(activity) { onAdCompleted() }
+                              ad.show(activity)
                           }
                           override fun onAdFailedToLoad(error: LoadAdError) {
                               showFallbackInterstitial(activity, onAdCompleted)
@@ -416,13 +548,18 @@ jobs:
                       ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                           override fun onAdDismissedFullScreenContent() {
                               regularInterstitialAd = null
+                              isShowingAd = false
                               loadRegularInterstitial(activity)
                               onAdCompleted()
                           }
                           override fun onAdFailedToShowFullScreenContent(err: AdError) {
                               regularInterstitialAd = null
+                              isShowingAd = false
                               loadRegularInterstitial(activity)
                               onAdCompleted()
+                          }
+                          override fun onAdShowedFullScreenContent() {
+                              isShowingAd = true
                           }
                       }
                       ad.show(activity)
@@ -436,17 +573,25 @@ jobs:
                               override fun onAdLoaded(ad: InterstitialAd) {
                                   ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                                       override fun onAdDismissedFullScreenContent() {
+                                          isShowingAd = false
                                           loadRegularInterstitial(activity)
                                           onAdCompleted()
                                       }
                                       override fun onAdFailedToShowFullScreenContent(err: AdError) {
+                                          isShowingAd = false
                                           loadRegularInterstitial(activity)
                                           onAdCompleted()
+                                      }
+                                      override fun onAdShowedFullScreenContent() {
+                                          isShowingAd = true
                                       }
                                   }
                                   ad.show(activity)
                               }
                               override fun onAdFailedToLoad(error: LoadAdError) {
+                                  if (error.code == 3) {
+                                      Toast.makeText(activity, "تنبيه AdMob: لا يوجد إعلان متاح حالياً (No Fill)", Toast.LENGTH_SHORT).show()
+                                  }
                                   onAdCompleted()
                               }
                           }
@@ -454,6 +599,7 @@ jobs:
                   }
               }
 
+              // الإعلان البيني الذي يظهر كل 5 نقرات
               fun showGeneralInterstitial(activity: Activity, onFinished: () -> Unit = {}) {
                   showFallbackInterstitial(activity, onFinished)
               }
@@ -850,7 +996,7 @@ jobs:
                       }
                   }
 
-                  AdManager.loadAndShowAppOpenAd(this)
+                  AdManager.loadAndShowAppOpenAdFirstTime(this)
                   AlarmScheduler.scheduleAllAlarms(this)
 
                   setContent {
@@ -873,7 +1019,6 @@ jobs:
               val keyboardController = LocalSoftwareKeyboardController.current
               val activity = context as? Activity
 
-              // الرابط الافتراضي يبقى مخفياً وغير قابل للنسخ في الشريط
               val initialUrl = "https://algeria.blsinternational.com/login"
 
               var currentUrl by remember { mutableStateOf(initialUrl) }
@@ -899,7 +1044,6 @@ jobs:
               var reticleOffset by remember { mutableStateOf(Offset(250f, 400f)) }
               var isPulsing by remember { mutableStateOf(false) }
 
-              // عداد النقرات على الأزرار (كل 5 نقرات يظهر إعلان بيني)
               var buttonClickCount by remember { mutableIntStateOf(0) }
 
               fun registerButtonClick(action: () -> Unit) {
@@ -1183,7 +1327,6 @@ jobs:
                                               isLoading = true
                                               url?.let {
                                                   currentUrl = it
-                                                  // إخفاء الرابط تماماً إن كان رابط الموقع الافتراضي لحمايته من النسخ
                                                   inputUrl = if (it.contains("blsinternational.com")) "" else it
                                               }
                                               evaluateJavascript(stealthJs, null)
