@@ -1,4 +1,4 @@
-name: Build ApexBrowser APK
+name: Build ApexBrowser Store Release
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-apk:
-    name: Generate & Build ApexBrowser (Stealth Edition)
+  build-release:
+    name: Build Signed Production Bundle (AAB) & APK
     runs-on: ubuntu-latest
 
     steps:
@@ -29,6 +29,13 @@ jobs:
       - name: Accept Android SDK Licenses
         run: |
           yes | sdkmanager --licenses || true
+
+      - name: Generate Release Keystore
+        run: |
+          keytool -genkeypair -v -keystore release.jks -alias apexkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass apexkeystorepass -keypass apexkeystorepass \
+            -dname "CN=ApexBrowser, OU=Production, O=ApexBrowser, L=Algiers, ST=Algiers, C=DZ"
 
       - name: Generate Android Project Structure & Source Code
         run: |
@@ -84,12 +91,21 @@ jobs:
               namespace = "com.apex.browser"
               compileSdk = 34
 
+              signingConfigs {
+                  create("release") {
+                      storeFile = file("${rootProject.projectDir}/release.jks")
+                      storePassword = "apexkeystorepass"
+                      keyAlias = "apexkey"
+                      keyPassword = "apexkeystorepass"
+                  }
+              }
+
               defaultConfig {
                   applicationId = "com.apex.browser"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 4
-                  versionName = "1.3"
+                  versionCode = 1
+                  versionName = "1.0.0"
 
                   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
                   vectorDrawables {
@@ -100,6 +116,7 @@ jobs:
               buildTypes {
                   release {
                       isMinifyEnabled = false
+                      signingConfig = signingConfigs.getByName("release")
                       proguardFiles(
                           getDefaultProguardFile("proguard-android-optimize.txt"),
                           "proguard-rules.pro"
@@ -153,7 +170,6 @@ jobs:
 
               implementation("androidx.webkit:webkit:1.10.0")
 
-              // Google AdMob SDK
               implementation("com.google.android.gms:play-services-ads:23.0.0")
           }
           EOF
@@ -166,7 +182,6 @@ jobs:
           </resources>
           EOF
 
-          # تصميم أيقونة التطبيق (Vector)
           cat << 'EOF' > app/src/main/res/drawable/ic_browser_logo.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp"
@@ -185,7 +200,6 @@ jobs:
           </vector>
           EOF
 
-          # تصميم أيقونة الإشعار الصغيرة
           cat << 'EOF' > app/src/main/res/drawable/ic_notification.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
@@ -384,12 +398,90 @@ jobs:
           import android.content.Context
           import android.content.Intent
           import android.media.AudioAttributes
+          import android.media.AudioFormat
+          import android.media.AudioTrack
           import android.media.RingtoneManager
           import android.os.Build
           import android.os.PowerManager
           import androidx.core.app.NotificationCompat
           import java.util.Calendar
           import java.util.TimeZone
+
+          object ChimePlayer {
+              private var currentTrack: AudioTrack? = null
+
+              // رنين مستمر مدة 3 ثوانٍ هادئ ونقي (Harmonic Chimes)
+              fun playCalmChime3Seconds(context: Context) {
+                  stop()
+                  Thread {
+                      try {
+                          val sampleRate = 44100
+                          val durationSeconds = 3.0
+                          val numSamples = (durationSeconds * sampleRate).toInt()
+                          val buffer = ShortArray(numSamples)
+
+                          // درجات نغمية متناسقة فاخرة وغير مزعجة (E5 - G#5 - B5)
+                          val freqs = doubleArrayOf(659.25, 830.61, 987.77)
+                          for (i in 0 until numSamples) {
+                              val t = i.toDouble() / sampleRate
+                              var sample = 0.0
+                              for ((idx, f) in freqs.withIndex()) {
+                                  val noteStart = idx * 0.4
+                                  if (t >= noteStart) {
+                                      val noteTime = t - noteStart
+                                      val envelope = Math.exp(-2.0 * noteTime)
+                                      sample += Math.sin(2.0 * Math.PI * f * noteTime) * envelope * 0.35
+                                      sample += Math.sin(4.0 * Math.PI * f * noteTime) * envelope * 0.08
+                                  }
+                              }
+                              val fadeOut = if (t > 2.5) (3.0 - t) / 0.5 else 1.0
+                              sample *= fadeOut
+                              buffer[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+                          }
+
+                          val track = AudioTrack.Builder()
+                              .setAudioAttributes(
+                                  AudioAttributes.Builder()
+                                      .setUsage(AudioAttributes.USAGE_ALARM)
+                                      .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                      .build()
+                              )
+                              .setAudioFormat(
+                                  AudioFormat.Builder()
+                                      .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                      .setSampleRate(sampleRate)
+                                      .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                      .build()
+                              )
+                              .setBufferSizeInBytes(buffer.size * 2)
+                              .setTransferMode(AudioTrack.MODE_STATIC)
+                              .build()
+
+                          currentTrack = track
+                          track.write(buffer, 0, buffer.size)
+                          track.play()
+                      } catch (e: Exception) {
+                          try {
+                              val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                              val r = RingtoneManager.getRingtone(context.applicationContext, uri)
+                              r?.play()
+                          } catch (ignored: Exception) {}
+                      }
+                  }.start()
+              }
+
+              fun stop() {
+                  try {
+                      currentTrack?.let {
+                          if (it.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                              it.stop()
+                          }
+                          it.release()
+                      }
+                      currentTrack = null
+                  } catch (ignored: Exception) {}
+              }
+          }
 
           object AlarmScheduler {
               const val ALGERIA_TZ = "Africa/Algiers"
@@ -402,7 +494,6 @@ jobs:
                   val message: String
               )
 
-              // مواعيد الثلاثاء والجمعة بتوقيت الجزائر (11:00 صباحاً و 16:30 مساءً)
               val alarms = listOf(
                   ScheduledAlarm(101, Calendar.TUESDAY, 11, 0, "لا تنسى حجز الموعد يفتح اليوم مساءا"),
                   ScheduledAlarm(102, Calendar.TUESDAY, 16, 30, "تبقى 30 دقيقة على موعد فتح الموقع للحجز اتمنى ان تحجز هذه المرة"),
@@ -441,21 +532,6 @@ jobs:
                   val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
                   val trigger = calculateNextTrigger(day, hour, minute)
                   setSystemAlarm(context, alarmManager, reqCode, trigger, message, day, hour, minute)
-              }
-
-              fun scheduleTestAlarm(context: Context, delaySeconds: Int = 5) {
-                  val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-                  val trigger = System.currentTimeMillis() + (delaySeconds * 1000L)
-                  setSystemAlarm(
-                      context,
-                      alarmManager,
-                      999,
-                      trigger,
-                      "تجربة المنبه: المنبه يعمل في الخلفية بنجاح وبأعلى دقة!",
-                      Calendar.TUESDAY,
-                      11,
-                      0
-                  )
               }
 
               private fun setSystemAlarm(
@@ -526,35 +602,29 @@ jobs:
                   val minute = intent.getIntExtra("minute", 0)
                   val message = intent.getStringExtra("message") ?: "تنبيه مواعيد الحجز BLS"
 
+                  // تشغيل النغمة الهادئة لمدة 3 ثوانٍ
+                  ChimePlayer.playCalmChime3Seconds(context)
+
                   showNotification(context, reqCode, message)
 
-                  if (reqCode != 999) {
-                      AlarmScheduler.scheduleNextOccurrence(context, reqCode, day, hour, minute, message)
-                  }
+                  AlarmScheduler.scheduleNextOccurrence(context, reqCode, day, hour, minute, message)
               }
 
               private fun showNotification(context: Context, notificationId: Int, message: String) {
-                  val channelId = "apex_alarm_channel_v3"
+                  val channelId = "apex_alarm_channel_prod"
                   val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val audioAttributes = AudioAttributes.Builder()
-                          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                          .setUsage(AudioAttributes.USAGE_ALARM)
-                          .build()
-
                       val channel = NotificationChannel(
                           channelId,
-                          "منبه مواعيد الحجز BLS",
+                          "مواعيد الحجز BLS",
                           NotificationManager.IMPORTANCE_HIGH
                       ).apply {
                           description = "تنبيهات مواعيد فتح حجز التأشيرة"
                           enableLights(true)
                           lightColor = android.graphics.Color.CYAN
                           enableVibration(true)
-                          vibrationPattern = longArrayOf(0, 500, 250, 500, 250, 500)
-                          setSound(soundUri, audioAttributes)
+                          vibrationPattern = longArrayOf(0, 400, 300, 400, 300, 400)
                           lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
                       }
                       manager.createNotificationChannel(channel)
@@ -588,11 +658,10 @@ jobs:
                       .setPriority(NotificationCompat.PRIORITY_MAX)
                       .setCategory(NotificationCompat.CATEGORY_ALARM)
                       .setAutoCancel(true)
-                      .setSound(soundUri)
-                      .setVibrate(longArrayOf(0, 500, 250, 500, 250, 500))
+                      .setVibrate(longArrayOf(0, 400, 300, 400, 300, 400))
                       .setContentIntent(openPendingIntent)
                       .setFullScreenIntent(openPendingIntent, true)
-                      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "إغلاق المنبه", dismissPendingIntent)
+                      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "إغلاق", dismissPendingIntent)
                       .build()
 
                   manager.notify(notificationId, notification)
@@ -601,6 +670,7 @@ jobs:
 
           class NotificationDismissReceiver : BroadcastReceiver() {
               override fun onReceive(context: Context, intent: Intent) {
+                  ChimePlayer.stop()
                   val notifId = intent.getIntExtra("notif_id", -1)
                   if (notifId != -1) {
                       val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -642,7 +712,6 @@ jobs:
           import android.webkit.WebSettings
           import android.webkit.WebView
           import android.webkit.WebViewClient
-          import android.widget.Toast
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.BackHandler
           import androidx.activity.compose.setContent
@@ -724,7 +793,6 @@ jobs:
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
                   if (requestCode == 1001 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                       AlarmScheduler.scheduleAllAlarms(this)
-                      Toast.makeText(this, "تم تفعيل تنبيهات مواعيد الحجز بنجاح!", Toast.LENGTH_SHORT).show()
                   }
               }
           }
@@ -1139,152 +1207,3 @@ jobs:
                           Column(modifier = Modifier.padding(18.dp)) {
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Text(
-                                      text = "Apex Automation Panel",
-                                      color = Color(0xFF38BDF8),
-                                      fontWeight = FontWeight.Bold,
-                                      fontSize = 16.sp
-                                  )
-                                  IconButton(onClick = { hudExpanded = false }) {
-                                      Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.LightGray)
-                                  }
-                              }
-
-                              HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(10.dp))
-
-                              Button(
-                                  onClick = {
-                                      AlarmScheduler.scheduleTestAlarm(context, 5)
-                                      Toast.makeText(
-                                          context,
-                                          "تم ضبط منبه تجريبي بعد 5 ثوانٍ! اقفل الشاشة للتجربة",
-                                          Toast.LENGTH_LONG
-                                      ).show()
-                                  },
-                                  colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                  shape = RoundedCornerShape(10.dp),
-                                  modifier = Modifier.fillMaxWidth()
-                              ) {
-                                  Icon(Icons.Default.Notifications, contentDescription = null, tint = Color.White)
-                                  Spacer(modifier = Modifier.width(8.dp))
-                                  Text("تجربة المنبه الآن (بعد 5 ثوانٍ)", color = Color.White, fontWeight = FontWeight.Bold)
-                              }
-
-                              Spacer(modifier = Modifier.height(12.dp))
-                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(10.dp))
-
-                              Row(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column {
-                                      Text(text = "Auto Refresh Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                      Text(
-                                          text = if (autoRefreshEnabled) "Next reload in ${countdownSeconds}s" else "Disabled",
-                                          color = if (autoRefreshEnabled) Color(0xFF4ADE80) else Color.Gray,
-                                          fontSize = 12.sp
-                                      )
-                                  }
-                                  Switch(
-                                      checked = autoRefreshEnabled,
-                                      onCheckedChange = { isChecked ->
-                                          if (isChecked) {
-                                              val activity = context as? Activity
-                                              if (activity != null) {
-                                                  AdManager.showVideoInterstitial(activity) {
-                                                      autoRefreshEnabled = true
-                                                  }
-                                              } else {
-                                                  autoRefreshEnabled = true
-                                              }
-                                          } else {
-                                              autoRefreshEnabled = false
-                                          }
-                                      },
-                                      colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF38BDF8))
-                                  )
-                              }
-
-                              Slider(
-                                  value = autoRefreshInterval.toFloat(),
-                                  onValueChange = { autoRefreshInterval = it.roundToInt() },
-                                  valueRange = 5f..60f,
-                                  steps = 55,
-                                  enabled = autoRefreshEnabled
-                              )
-
-                              Spacer(modifier = Modifier.height(10.dp))
-                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(10.dp))
-
-                              Row(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column {
-                                      Text(text = "Auto Clicker Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                      Text(
-                                          text = if (autoClickerEnabled) "Interval: ${clickIntervalMs}ms (Active)" else "Reticle target inactive",
-                                          color = if (autoClickerEnabled) Color(0xFFEF4444) else Color.Gray,
-                                          fontSize = 12.sp
-                                      )
-                                  }
-                                  Switch(
-                                      checked = autoClickerEnabled,
-                                      onCheckedChange = { isChecked ->
-                                          if (isChecked) {
-                                              val activity = context as? Activity
-                                              if (activity != null) {
-                                                  AdManager.showVideoInterstitial(activity) {
-                                                      autoClickerEnabled = true
-                                                  }
-                                              } else {
-                                                  autoClickerEnabled = true
-                                              }
-                                          } else {
-                                              autoClickerEnabled = false
-                                          }
-                                      },
-                                      colors = SwitchDefaults.colors(
-                                          checkedThumbColor = Color(0xFFEF4444),
-                                          checkedTrackColor = Color(0x66EF4444)
-                                      )
-                                  )
-                              }
-
-                              Slider(
-                                  value = clickIntervalMs.toFloat(),
-                                  onValueChange = { clickIntervalMs = it.toLong() },
-                                  valueRange = 200f..4000f,
-                                  steps = 38,
-                                  enabled = autoClickerEnabled
-                              )
-                          }
-                      }
-                  }
-              }
-          }
-          EOF
-
-      - name: Generate Gradle Wrapper
-        run: |
-          gradle wrapper --gradle-version 8.7
-          chmod +x gradlew
-
-      - name: Build Debug APK
-        run: |
-          ./gradlew assembleDebug --stacktrace --no-daemon
-
-      - name: Upload ApexBrowser APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ApexBrowser-Stealth-v1.3
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14
