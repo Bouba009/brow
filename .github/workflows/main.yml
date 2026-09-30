@@ -21,16 +21,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle 8.7
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.7'
-
       - name: Accept Android SDK Licenses
         run: |
           yes | sdkmanager --licenses || true
 
-      - name: Generate Release Keystore
+      - name: Create Release Signing Keystore
         run: |
           keytool -genkeypair -v -keystore release.jks -alias apexkey \
             -keyalg RSA -keysize 2048 -validity 10000 \
@@ -410,7 +405,6 @@ jobs:
           object ChimePlayer {
               private var currentTrack: AudioTrack? = null
 
-              // رنين مستمر مدة 3 ثوانٍ هادئ ونقي (Harmonic Chimes)
               fun playCalmChime3Seconds(context: Context) {
                   stop()
                   Thread {
@@ -420,7 +414,6 @@ jobs:
                           val numSamples = (durationSeconds * sampleRate).toInt()
                           val buffer = ShortArray(numSamples)
 
-                          // درجات نغمية متناسقة فاخرة وغير مزعجة (E5 - G#5 - B5)
                           val freqs = doubleArrayOf(659.25, 830.61, 987.77)
                           for (i in 0 until numSamples) {
                               val t = i.toDouble() / sampleRate
@@ -602,9 +595,7 @@ jobs:
                   val minute = intent.getIntExtra("minute", 0)
                   val message = intent.getStringExtra("message") ?: "تنبيه مواعيد الحجز BLS"
 
-                  // تشغيل النغمة الهادئة لمدة 3 ثوانٍ
                   ChimePlayer.playCalmChime3Seconds(context)
-
                   showNotification(context, reqCode, message)
 
                   AlarmScheduler.scheduleNextOccurrence(context, reqCode, day, hour, minute, message)
@@ -1207,3 +1198,138 @@ jobs:
                           Column(modifier = Modifier.padding(18.dp)) {
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Text(
+                                      text = "Apex Automation Panel",
+                                      color = Color(0xFF38BDF8),
+                                      fontWeight = FontWeight.Bold,
+                                      fontSize = 16.sp
+                                  )
+                                  IconButton(onClick = { hudExpanded = false }) {
+                                      Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.LightGray)
+                                  }
+                              }
+
+                              HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
+                              Spacer(modifier = Modifier.height(12.dp))
+
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Column {
+                                      Text(text = "Auto Refresh Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                      Text(
+                                          text = if (autoRefreshEnabled) "Next reload in ${countdownSeconds}s" else "Disabled",
+                                          color = if (autoRefreshEnabled) Color(0xFF4ADE80) else Color.Gray,
+                                          fontSize = 12.sp
+                                      )
+                                  }
+                                  Switch(
+                                      checked = autoRefreshEnabled,
+                                      onCheckedChange = { isChecked ->
+                                          if (isChecked) {
+                                              val activity = context as? Activity
+                                              if (activity != null) {
+                                                  AdManager.showVideoInterstitial(activity) {
+                                                      autoRefreshEnabled = true
+                                                  }
+                                              } else {
+                                                  autoRefreshEnabled = true
+                                              }
+                                          } else {
+                                              autoRefreshEnabled = false
+                                          }
+                                      },
+                                      colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF38BDF8))
+                                  )
+                              }
+
+                              Slider(
+                                  value = autoRefreshInterval.toFloat(),
+                                  onValueChange = { autoRefreshInterval = it.roundToInt() },
+                                  valueRange = 5f..60f,
+                                  steps = 55,
+                                  enabled = autoRefreshEnabled
+                              )
+
+                              Spacer(modifier = Modifier.height(12.dp))
+                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
+                              Spacer(modifier = Modifier.height(12.dp))
+
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Column {
+                                      Text(text = "Auto Clicker Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                      Text(
+                                          text = if (autoClickerEnabled) "Interval: ${clickIntervalMs}ms (Active)" else "Reticle target inactive",
+                                          color = if (autoClickerEnabled) Color(0xFFEF4444) else Color.Gray,
+                                          fontSize = 12.sp
+                                      )
+                                  }
+                                  Switch(
+                                      checked = autoClickerEnabled,
+                                      onCheckedChange = { isChecked ->
+                                          if (isChecked) {
+                                              val activity = context as? Activity
+                                              if (activity != null) {
+                                                  AdManager.showVideoInterstitial(activity) {
+                                                      autoClickerEnabled = true
+                                                  }
+                                              } else {
+                                                  autoClickerEnabled = true
+                                              }
+                                          } else {
+                                              autoClickerEnabled = false
+                                          }
+                                      },
+                                      colors = SwitchDefaults.colors(
+                                          checkedThumbColor = Color(0xFFEF4444),
+                                          checkedTrackColor = Color(0x66EF4444)
+                                      )
+                                  )
+                              }
+
+                              Slider(
+                                  value = clickIntervalMs.toFloat(),
+                                  onValueChange = { clickIntervalMs = it.toLong() },
+                                  valueRange = 200f..4000f,
+                                  steps = 38,
+                                  enabled = autoClickerEnabled
+                              )
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+      - name: Install Gradle & Generate Wrapper
+        run: |
+          sudo apt-get update && sudo apt-get install -y gradle
+          gradle wrapper --gradle-version 8.7
+          chmod +x gradlew
+
+      - name: Build Signed Release APK & Play Store Bundle (AAB)
+        run: |
+          ./gradlew assembleRelease bundleRelease --stacktrace --no-daemon
+
+      - name: Upload Signed Production APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ApexBrowser-Release-APK
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Upload Google Play Store Bundle (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ApexBrowser-PlayStore-AAB
+          path: app/build/outputs/bundle/release/*.aab
+          retention-days: 30
