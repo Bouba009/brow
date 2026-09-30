@@ -37,6 +37,7 @@ jobs:
           mkdir -p gradle/wrapper
           mkdir -p app/src/main/java/com/apex/browser
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
 
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
@@ -87,8 +88,8 @@ jobs:
                   applicationId = "com.apex.browser"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 2
-                  versionName = "1.1"
+                  versionCode = 3
+                  versionName = "1.2"
 
                   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
                   vectorDrawables {
@@ -150,8 +151,11 @@ jobs:
               implementation("androidx.compose.material3:material3")
               implementation("androidx.compose.material:material-icons-extended")
 
-              // مكتبة webkit للتحكم بالـ Headers المتقدمة وإخفاء X-Requested-With
+              // WebKit للتحكم المتقدم بالـ Headers
               implementation("androidx.webkit:webkit:1.10.0")
+
+              // Google AdMob SDK
+              implementation("com.google.android.gms:play-services-ads:23.0.0")
           }
           EOF
 
@@ -163,19 +167,61 @@ jobs:
           </resources>
           EOF
 
+          # تصميم أيقونة التطبيق (Vector Icon)
+          cat << 'EOF' > app/src/main/res/drawable/ic_browser_logo.xml
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#0F172A"
+                  android:pathData="M0,0h108v108h-108z"/>
+              <path
+                  android:strokeColor="#38BDF8"
+                  android:strokeWidth="3.5"
+                  android:pathData="M54,18 A36,36 0 1,0 54,90 A36,36 0 1,0 54,18 Z"/>
+              <path
+                  android:strokeColor="#1E40AF"
+                  android:strokeWidth="2.5"
+                  android:pathData="M18,54 L90,54"/>
+              <path
+                  android:strokeColor="#38BDF8"
+                  android:strokeWidth="2.5"
+                  android:pathData="M54,18 C70,32 70,76 54,90 C38,76 38,32 54,18 Z"/>
+              <path
+                  android:fillColor="#38BDF8"
+                  android:pathData="M57,36 L43,55 L53,55 L49,72 L66,51 L55,51 Z"/>
+          </vector>
+          EOF
+
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+              <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+              <uses-permission android:name="android.permission.VIBRATE" />
 
               <application
+                  android:name=".ApexApp"
                   android:allowBackup="true"
+                  android:icon="@drawable/ic_browser_logo"
+                  android:roundIcon="@drawable/ic_browser_logo"
                   android:label="@string/app_name"
                   android:supportsRtl="true"
                   android:usesCleartextTraffic="true"
                   android:theme="@android:style/Theme.Material.NoActionBar">
+
+                  <!-- Google AdMob Application ID -->
+                  <meta-data
+                      android:name="com.google.android.gms.ads.APPLICATION_ID"
+                      android:value="ca-app-pub-7908900046861491~8143132483"/>
+
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
@@ -185,21 +231,342 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
+
+                  <!-- Receivers للمنبه وإغلاق الإشعار وإعادة التشغيل -->
+                  <receiver android:name=".AlarmReceiver" android:exported="false" />
+                  <receiver android:name=".NotificationDismissReceiver" android:exported="false" />
+                  <receiver android:name=".BootReceiver" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED" />
+                          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                      </intent-filter>
+                  </receiver>
+
               </application>
 
           </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/apex/browser/ApexApp.kt
+          package com.apex.browser
+
+          import android.app.Application
+
+          class ApexApp : Application() {
+              override fun onCreate() {
+                  super.onCreate()
+                  AdManager.init(this)
+                  AlarmScheduler.scheduleAllAlarms(this)
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/apex/browser/AdManager.kt
+          package com.apex.browser
+
+          import android.app.Activity
+          import android.content.Context
+          import com.google.android.gms.ads.AdRequest
+          import com.google.android.gms.ads.FullScreenContentCallback
+          import com.google.android.gms.ads.LoadAdError
+          import com.google.android.gms.ads.MobileAds
+          import com.google.android.gms.ads.appopen.AppOpenAd
+          import com.google.android.gms.ads.interstitial.InterstitialAd
+          import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+
+          object AdManager {
+              private const val APP_OPEN_AD_ID = "ca-app-pub-7908900046861491/2390254337"
+              private const val VIDEO_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/1971451938"
+              private const val REGULAR_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/2270086406"
+
+              private var videoInterstitialAd: InterstitialAd? = null
+              private var regularInterstitialAd: InterstitialAd? = null
+              private var isVideoLoading = false
+              private var isRegularLoading = false
+
+              fun init(context: Context) {
+                  MobileAds.initialize(context) {}
+                  loadVideoInterstitial(context)
+                  loadRegularInterstitial(context)
+              }
+
+              fun loadAndShowAppOpenAd(activity: Activity) {
+                  val request = AdRequest.Builder().build()
+                  AppOpenAd.load(
+                      activity,
+                      APP_OPEN_AD_ID,
+                      request,
+                      object : AppOpenAd.AppOpenAdLoadCallback() {
+                          override fun onAdLoaded(ad: AppOpenAd) {
+                              ad.show(activity)
+                          }
+                          override fun onAdFailedToLoad(error: LoadAdError) {}
+                      }
+                  )
+              }
+
+              fun loadVideoInterstitial(context: Context) {
+                  if (videoInterstitialAd != null || isVideoLoading) return
+                  isVideoLoading = true
+                  val request = AdRequest.Builder().build()
+                  InterstitialAd.load(
+                      context,
+                      VIDEO_INTERSTITIAL_ID,
+                      request,
+                      object : InterstitialAdLoadCallback() {
+                          override fun onAdLoaded(ad: InterstitialAd) {
+                              videoInterstitialAd = ad
+                              isVideoLoading = false
+                          }
+                          override fun onAdFailedToLoad(error: LoadAdError) {
+                              videoInterstitialAd = null
+                              isVideoLoading = false
+                          }
+                      }
+                  )
+              }
+
+              fun showVideoInterstitial(activity: Activity, onFinished: () -> Unit) {
+                  val ad = videoInterstitialAd
+                  if (ad != null) {
+                      ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                          override fun onAdDismissedFullScreenContent() {
+                              videoInterstitialAd = null
+                              loadVideoInterstitial(activity)
+                              onFinished()
+                          }
+                          override fun onAdFailedToShowFullScreenContent(err: com.google.android.gms.ads.AdError) {
+                              videoInterstitialAd = null
+                              loadVideoInterstitial(activity)
+                              onFinished()
+                          }
+                      }
+                      ad.show(activity)
+                  } else {
+                      loadVideoInterstitial(activity)
+                      onFinished()
+                  }
+              }
+
+              fun loadRegularInterstitial(context: Context) {
+                  if (regularInterstitialAd != null || isRegularLoading) return
+                  isRegularLoading = true
+                  val request = AdRequest.Builder().build()
+                  InterstitialAd.load(
+                      context,
+                      REGULAR_INTERSTITIAL_ID,
+                      request,
+                      object : InterstitialAdLoadCallback() {
+                          override fun onAdLoaded(ad: InterstitialAd) {
+                              regularInterstitialAd = ad
+                              isRegularLoading = false
+                          }
+                          override fun onAdFailedToLoad(error: LoadAdError) {
+                              regularInterstitialAd = null
+                              isRegularLoading = false
+                          }
+                      }
+                  )
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/apex/browser/AlarmScheduler.kt
+          package com.apex.browser
+
+          import android.app.AlarmManager
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.content.BroadcastReceiver
+          import android.content.Context
+          import android.content.Intent
+          import android.media.AudioAttributes
+          import android.media.RingtoneManager
+          import android.os.Build
+          import androidx.core.app.NotificationCompat
+          import java.util.Calendar
+          import java.util.TimeZone
+
+          object AlarmScheduler {
+              data class ScheduledAlarm(
+                  val reqCode: Int,
+                  val dayOfWeek: Int,
+                  val hour: Int,
+                  val minute: Int,
+                  val message: String
+              )
+
+              // أيام الثلاثاء والجمعة بتوقيت الجزائر (11:00 صباحاً و 16:30 مساءً)
+              val alarms = listOf(
+                  ScheduledAlarm(101, Calendar.TUESDAY, 11, 0, "لا تنسى حجز الموعد يفتح اليوم مساءا"),
+                  ScheduledAlarm(102, Calendar.TUESDAY, 16, 30, "تبقى 30 دقيقة على موعد فتح الموقع للحجز اتمنى ان تحجز هذه المرة"),
+                  ScheduledAlarm(103, Calendar.FRIDAY, 11, 0, "لا تنسى حجز الموعد يفتح اليوم مساءا"),
+                  ScheduledAlarm(104, Calendar.FRIDAY, 16, 30, "تبقى 30 دقيقة على موعد فتح الموقع للحجز اتمنى ان تحجز هذه المرة")
+              )
+
+              fun scheduleAllAlarms(context: Context) {
+                  val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+                  val tz = TimeZone.getTimeZone("Africa/Algiers")
+
+                  for (alarm in alarms) {
+                      scheduleSingle(context, alarmManager, tz, alarm)
+                  }
+              }
+
+              fun scheduleSingle(context: Context, alarmManager: AlarmManager, tz: TimeZone, alarm: ScheduledAlarm) {
+                  val now = Calendar.getInstance(tz).timeInMillis
+                  val target = Calendar.getInstance(tz).apply {
+                      set(Calendar.DAY_OF_WEEK, alarm.dayOfWeek)
+                      set(Calendar.HOUR_OF_DAY, alarm.hour)
+                      set(Calendar.MINUTE, alarm.minute)
+                      set(Calendar.SECOND, 0)
+                      set(Calendar.MILLISECOND, 0)
+                      if (timeInMillis <= now) {
+                          add(Calendar.WEEK_OF_YEAR, 1)
+                      }
+                  }
+
+                  val intent = Intent(context, AlarmReceiver::class.java).apply {
+                      putExtra("req_code", alarm.reqCode)
+                      putExtra("day", alarm.dayOfWeek)
+                      putExtra("hour", alarm.hour)
+                      putExtra("minute", alarm.minute)
+                      putExtra("message", alarm.message)
+                  }
+
+                  val pi = PendingIntent.getBroadcast(
+                      context,
+                      alarm.reqCode,
+                      intent,
+                      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                  )
+
+                  try {
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                          alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target.timeInMillis, pi)
+                      } else {
+                          alarmManager.setExact(AlarmManager.RTC_WAKEUP, target.timeInMillis, pi)
+                      }
+                  } catch (e: Exception) {
+                      alarmManager.set(AlarmManager.RTC_WAKEUP, target.timeInMillis, pi)
+                  }
+              }
+          }
+
+          class AlarmReceiver : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent) {
+                  val reqCode = intent.getIntExtra("req_code", 100)
+                  val day = intent.getIntExtra("day", Calendar.TUESDAY)
+                  val hour = intent.getIntExtra("hour", 11)
+                  val minute = intent.getIntExtra("minute", 0)
+                  val message = intent.getStringExtra("message") ?: "تنبيه مواعيد الحجز BLS"
+
+                  showNotification(context, reqCode, message)
+
+                  // إعادة الجدولة التلقائية للأسبوع القادم
+                  val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+                  val tz = TimeZone.getTimeZone("Africa/Algiers")
+                  val config = AlarmScheduler.ScheduledAlarm(reqCode, day, hour, minute, message)
+                  AlarmScheduler.scheduleSingle(context, alarmManager, tz, config)
+              }
+
+              private fun showNotification(context: Context, notificationId: Int, message: String) {
+                  val channelId = "apex_bls_channel"
+                  val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val audioAttributes = AudioAttributes.Builder()
+                          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                          .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                          .build()
+
+                      val channel = NotificationChannel(
+                          channelId,
+                          "مواعيد الحجز BLS",
+                          NotificationManager.IMPORTANCE_HIGH
+                      ).apply {
+                          description = "تنبيهات ومواعيد فتح حجز التأشيرة"
+                          enableLights(true)
+                          lightColor = android.graphics.Color.CYAN
+                          enableVibration(true)
+                          vibrationPattern = longArrayOf(0, 350, 150, 350)
+                          setSound(soundUri, audioAttributes)
+                      }
+                      manager.createNotificationChannel(channel)
+                  }
+
+                  val openIntent = Intent(context, MainActivity::class.java).apply {
+                      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                  }
+                  val openPendingIntent = PendingIntent.getActivity(
+                      context,
+                      notificationId,
+                      openIntent,
+                      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                  )
+
+                  // زر الإغلاق المباشر للإشعار
+                  val dismissIntent = Intent(context, NotificationDismissReceiver::class.java).apply {
+                      putExtra("notif_id", notificationId)
+                  }
+                  val dismissPendingIntent = PendingIntent.getBroadcast(
+                      context,
+                      notificationId,
+                      dismissIntent,
+                      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                  )
+
+                  val notification = NotificationCompat.Builder(context, channelId)
+                      .setSmallIcon(R.drawable.ic_browser_logo)
+                      .setContentTitle("ApexBrowser - تذكير الحجز")
+                      .setContentText(message)
+                      .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                      .setPriority(NotificationCompat.PRIORITY_HIGH)
+                      .setCategory(NotificationCompat.CATEGORY_ALARM)
+                      .setAutoCancel(true)
+                      .setSound(soundUri)
+                      .setVibrate(longArrayOf(0, 350, 150, 350))
+                      .setContentIntent(openPendingIntent)
+                      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "إغلاق", dismissPendingIntent)
+                      .build()
+
+                  manager.notify(notificationId, notification)
+              }
+          }
+
+          class NotificationDismissReceiver : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent) {
+                  val notifId = intent.getIntExtra("notif_id", -1)
+                  if (notifId != -1) {
+                      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      manager.cancel(notifId)
+                  }
+              }
+          }
+
+          class BootReceiver : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent) {
+                  if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                      AlarmScheduler.scheduleAllAlarms(context)
+                  }
+              }
+          }
           EOF
 
           cat << 'EOF' > app/src/main/java/com/apex/browser/MainActivity.kt
           package com.apex.browser
 
           import android.annotation.SuppressLint
+          import android.app.Activity
+          import android.content.pm.PackageManager
           import android.graphics.Bitmap
           import android.net.http.SslError
+          import android.os.Build
           import android.os.Bundle
           import android.os.SystemClock
           import android.view.MotionEvent
-          import android.view.View
           import android.view.ViewGroup
           import android.webkit.CookieManager
           import android.webkit.SslErrorHandler
@@ -258,6 +625,17 @@ jobs:
           class MainActivity : ComponentActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+
+                  // طلب إذن الإشعارات لأندرويد 13 فما فوق
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                      if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                          requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+                      }
+                  }
+
+                  // عرض إعلان فتح التطبيق (App Open Ad)
+                  AdManager.loadAndShowAppOpenAd(this)
+
                   setContent {
                       ApexBrowserApp()
                   }
@@ -270,8 +648,11 @@ jobs:
               val context = LocalContext.current
               val keyboardController = LocalSoftwareKeyboardController.current
 
-              var currentUrl by remember { mutableStateOf("https://www.google.com") }
-              var inputUrl by remember { mutableStateOf("https://www.google.com") }
+              // الرابط الافتراضي المطلوب لحجز المواعيد
+              val initialUrl = "https://algeria.blsinternational.com/login"
+
+              var currentUrl by remember { mutableStateOf(initialUrl) }
+              var inputUrl by remember { mutableStateOf(initialUrl) }
               var pageTitle by remember { mutableStateOf("ApexBrowser") }
               var progress by remember { mutableStateOf(0f) }
               var isLoading by remember { mutableStateOf(false) }
@@ -293,7 +674,6 @@ jobs:
               var reticleOffset by remember { mutableStateOf(Offset(250f, 400f)) }
               var isPulsing by remember { mutableStateOf(false) }
 
-              // User-Agents حقيقية تماماً تحاكي متصفح Chrome الأصلي بدون علامات WebView
               val cleanMobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
               val cleanDesktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
@@ -498,7 +878,6 @@ jobs:
                                           ViewGroup.LayoutParams.MATCH_PARENT
                                       )
 
-                                      // 1. منع إرسال هيدر X-Requested-With نهائياً لجميع النطاقات
                                       if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
                                           WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
                                       }
@@ -515,7 +894,6 @@ jobs:
                                           loadWithOverviewMode = true
                                           cacheMode = WebSettings.LOAD_DEFAULT
                                           userAgentString = cleanMobileUA
-                                          // تفعيل تخزين وتكامل الجلسات
                                           allowFileAccess = true
                                           allowContentAccess = true
                                       }
@@ -524,11 +902,9 @@ jobs:
                                       cookieManager.setAcceptCookie(true)
                                       cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                                      // 2. سكربت Stealth لحذف خصائص كشف البوتات ومحاكاة Chrome الحقيقي
                                       val stealthJs = """
                                           (function() {
                                               try {
-                                                  // حذف مؤشرات الويب درايفر والويب فيو
                                                   delete Object.getPrototypeOf(navigator).webdriver;
                                                   Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
                                                   window.chrome = { runtime: {}, app: {}, loadTimes: function() {}, csi: function() {} };
@@ -551,7 +927,6 @@ jobs:
                                                   currentUrl = it
                                                   inputUrl = it
                                               }
-                                              // حقن السكربت بمجرد بدء تحميل الصفحة
                                               evaluateJavascript(stealthJs, null)
                                           }
 
@@ -561,7 +936,6 @@ jobs:
                                               canGoBack = canGoBack()
                                               canGoForward = canGoForward()
                                               pageTitle = view?.title ?: "ApexBrowser"
-                                              // إعادة التأكيد على السكربت عند انتهاء التحميل
                                               evaluateJavascript(stealthJs, null)
                                               cookieManager.flush()
                                           }
@@ -711,7 +1085,21 @@ jobs:
                                   }
                                   Switch(
                                       checked = autoRefreshEnabled,
-                                      onCheckedChange = { autoRefreshEnabled = it },
+                                      onCheckedChange = { isChecked ->
+                                          if (isChecked) {
+                                              val activity = context as? Activity
+                                              if (activity != null) {
+                                                  // تشغيل الإعلان البيني الفيديو قبل تفعيل الأداة
+                                                  AdManager.showVideoInterstitial(activity) {
+                                                      autoRefreshEnabled = true
+                                                  }
+                                              } else {
+                                                  autoRefreshEnabled = true
+                                              }
+                                          } else {
+                                              autoRefreshEnabled = false
+                                          }
+                                      },
                                       colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF38BDF8))
                                   )
                               }
@@ -743,7 +1131,21 @@ jobs:
                                   }
                                   Switch(
                                       checked = autoClickerEnabled,
-                                      onCheckedChange = { autoClickerEnabled = it },
+                                      onCheckedChange = { isChecked ->
+                                          if (isChecked) {
+                                              val activity = context as? Activity
+                                              if (activity != null) {
+                                                  // تشغيل الإعلان البيني الفيديو قبل تفعيل الأداة
+                                                  AdManager.showVideoInterstitial(activity) {
+                                                      autoClickerEnabled = true
+                                                  }
+                                              } else {
+                                                  autoClickerEnabled = true
+                                              }
+                                          } else {
+                                              autoClickerEnabled = false
+                                          }
+                                      },
                                       colors = SwitchDefaults.colors(
                                           checkedThumbColor = Color(0xFFEF4444),
                                           checkedTrackColor = Color(0x66EF4444)
@@ -777,6 +1179,6 @@ jobs:
       - name: Upload ApexBrowser APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ApexBrowser-Stealth-v1.1
+          name: ApexBrowser-Stealth-v1.2
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
