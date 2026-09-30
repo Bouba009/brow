@@ -277,6 +277,8 @@ jobs:
 
           import android.app.Activity
           import android.content.Context
+          import android.widget.Toast
+          import com.google.android.gms.ads.AdError
           import com.google.android.gms.ads.AdRequest
           import com.google.android.gms.ads.FullScreenContentCallback
           import com.google.android.gms.ads.LoadAdError
@@ -284,20 +286,23 @@ jobs:
           import com.google.android.gms.ads.appopen.AppOpenAd
           import com.google.android.gms.ads.interstitial.InterstitialAd
           import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+          import com.google.android.gms.ads.rewarded.RewardedAd
+          import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 
           object AdManager {
               private const val APP_OPEN_AD_ID = "ca-app-pub-7908900046861491/2390254337"
-              private const val VIDEO_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/1971451938"
+              private const val VIDEO_REWARDED_ID = "ca-app-pub-7908900046861491/1971451938"
               private const val REGULAR_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/2270086406"
 
-              private var videoInterstitialAd: InterstitialAd? = null
+              private var rewardedAd: RewardedAd? = null
               private var regularInterstitialAd: InterstitialAd? = null
-              private var isVideoLoading = false
+
+              private var isRewardedLoading = false
               private var isRegularLoading = false
 
               fun init(context: Context) {
                   MobileAds.initialize(context) {}
-                  loadVideoInterstitial(context)
+                  loadRewardedAd(context)
                   loadRegularInterstitial(context)
               }
 
@@ -316,52 +321,32 @@ jobs:
                   )
               }
 
-              fun loadVideoInterstitial(context: Context) {
-                  if (videoInterstitialAd != null || isVideoLoading) return
-                  isVideoLoading = true
+              fun loadRewardedAd(context: Context) {
+                  if (rewardedAd != null || isRewardedLoading) return
+                  isRewardedLoading = true
+
                   val request = AdRequest.Builder().build()
-                  InterstitialAd.load(
+                  RewardedAd.load(
                       context,
-                      VIDEO_INTERSTITIAL_ID,
+                      VIDEO_REWARDED_ID,
                       request,
-                      object : InterstitialAdLoadCallback() {
-                          override fun onAdLoaded(ad: InterstitialAd) {
-                              videoInterstitialAd = ad
-                              isVideoLoading = false
+                      object : RewardedAdLoadCallback() {
+                          override fun onAdLoaded(ad: RewardedAd) {
+                              rewardedAd = ad
+                              isRewardedLoading = false
                           }
                           override fun onAdFailedToLoad(error: LoadAdError) {
-                              videoInterstitialAd = null
-                              isVideoLoading = false
+                              rewardedAd = null
+                              isRewardedLoading = false
                           }
                       }
                   )
               }
 
-              fun showVideoInterstitial(activity: Activity, onFinished: () -> Unit) {
-                  val ad = videoInterstitialAd
-                  if (ad != null) {
-                      ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                          override fun onAdDismissedFullScreenContent() {
-                              videoInterstitialAd = null
-                              loadVideoInterstitial(activity)
-                              onFinished()
-                          }
-                          override fun onAdFailedToShowFullScreenContent(err: com.google.android.gms.ads.AdError) {
-                              videoInterstitialAd = null
-                              loadVideoInterstitial(activity)
-                              onFinished()
-                          }
-                      }
-                      ad.show(activity)
-                  } else {
-                      loadVideoInterstitial(activity)
-                      onFinished()
-                  }
-              }
-
               fun loadRegularInterstitial(context: Context) {
                   if (regularInterstitialAd != null || isRegularLoading) return
                   isRegularLoading = true
+
                   val request = AdRequest.Builder().build()
                   InterstitialAd.load(
                       context,
@@ -378,6 +363,100 @@ jobs:
                           }
                       }
                   )
+              }
+
+              fun showAdForAutoClick(activity: Activity, onAdCompleted: () -> Unit) {
+                  if (rewardedAd != null) {
+                      val ad = rewardedAd!!
+                      ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                          override fun onAdDismissedFullScreenContent() {
+                              rewardedAd = null
+                              loadRewardedAd(activity)
+                              onAdCompleted()
+                          }
+                          override fun onAdFailedToShowFullScreenContent(err: AdError) {
+                              rewardedAd = null
+                              loadRewardedAd(activity)
+                              showFallbackInterstitial(activity, onAdCompleted)
+                          }
+                      }
+                      ad.show(activity) { onAdCompleted() }
+                      return
+                  }
+
+                  Toast.makeText(activity, "جاري تحضير الإعلان لتفعيل النقر التلقائي...", Toast.LENGTH_SHORT).show()
+                  val request = AdRequest.Builder().build()
+                  RewardedAd.load(
+                      activity,
+                      VIDEO_REWARDED_ID,
+                      request,
+                      object : RewardedAdLoadCallback() {
+                          override fun onAdLoaded(ad: RewardedAd) {
+                              ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                                  override fun onAdDismissedFullScreenContent() {
+                                      loadRewardedAd(activity)
+                                      onAdCompleted()
+                                  }
+                                  override fun onAdFailedToShowFullScreenContent(err: AdError) {
+                                      showFallbackInterstitial(activity, onAdCompleted)
+                                  }
+                              }
+                              ad.show(activity) { onAdCompleted() }
+                          }
+                          override fun onAdFailedToLoad(error: LoadAdError) {
+                              showFallbackInterstitial(activity, onAdCompleted)
+                          }
+                      }
+                  )
+              }
+
+              private fun showFallbackInterstitial(activity: Activity, onAdCompleted: () -> Unit) {
+                  if (regularInterstitialAd != null) {
+                      val ad = regularInterstitialAd!!
+                      ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                          override fun onAdDismissedFullScreenContent() {
+                              regularInterstitialAd = null
+                              loadRegularInterstitial(activity)
+                              onAdCompleted()
+                          }
+                          override fun onAdFailedToShowFullScreenContent(err: AdError) {
+                              regularInterstitialAd = null
+                              loadRegularInterstitial(activity)
+                              onAdCompleted()
+                          }
+                      }
+                      ad.show(activity)
+                  } else {
+                      val request = AdRequest.Builder().build()
+                      InterstitialAd.load(
+                          activity,
+                          REGULAR_INTERSTITIAL_ID,
+                          request,
+                          object : InterstitialAdLoadCallback() {
+                              override fun onAdLoaded(ad: InterstitialAd) {
+                                  ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                                      override fun onAdDismissedFullScreenContent() {
+                                          loadRegularInterstitial(activity)
+                                          onAdCompleted()
+                                      }
+                                      override fun onAdFailedToShowFullScreenContent(err: AdError) {
+                                          loadRegularInterstitial(activity)
+                                          onAdCompleted()
+                                      }
+                                  }
+                                  ad.show(activity)
+                              }
+                              override fun onAdFailedToLoad(error: LoadAdError) {
+                                  Toast.makeText(activity, "تم تفعيل الأداة بنجاح", Toast.LENGTH_SHORT).show()
+                                  onAdCompleted()
+                              }
+                          }
+                      )
+                  }
+              }
+
+              fun showGeneralInterstitial(activity: Activity, onFinished: () -> Unit) {
+                  showFallbackInterstitial(activity, onFinished)
               }
           }
           EOF
@@ -1234,7 +1313,7 @@ jobs:
                                           if (isChecked) {
                                               val activity = context as? Activity
                                               if (activity != null) {
-                                                  AdManager.showVideoInterstitial(activity) {
+                                                  AdManager.showGeneralInterstitial(activity) {
                                                       autoRefreshEnabled = true
                                                   }
                                               } else {
@@ -1279,7 +1358,7 @@ jobs:
                                           if (isChecked) {
                                               val activity = context as? Activity
                                               if (activity != null) {
-                                                  AdManager.showVideoInterstitial(activity) {
+                                                  AdManager.showAdForAutoClick(activity) {
                                                       autoClickerEnabled = true
                                                   }
                                               } else {
@@ -1312,7 +1391,7 @@ jobs:
 
       - name: Install Gradle & Generate Wrapper
         run: |
-          sudo apt-get update && sudo apt-get install -y gradle
+          sudo apt-get update -qq && sudo apt-get install -y gradle
           gradle wrapper --gradle-version 8.7
           chmod +x gradlew
 
