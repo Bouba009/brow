@@ -258,6 +258,100 @@ jobs:
           </manifest>
           EOF
 
+          cat << 'EOF' > app/src/main/java/com/apex/browser/RemoteConfigManager.kt
+          package com.apex.browser
+
+          import android.content.Context
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableIntStateOf
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.setValue
+          import kotlinx.coroutines.CoroutineScope
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.launch
+          import org.json.JSONObject
+          import java.net.HttpURLConnection
+          import java.net.URL
+
+          object RemoteConfigManager {
+              // ضع رابط ملف الـ JSON الخاص بك هنا (من GitHub Gist أو موقعك)
+              var configUrl = "https://gist.githubusercontent.com/raw/apex_browser_config.json"
+
+              // القيم المتغيرة التي يتم التحكم بها عن بُعد (مع قيم افتراضية آمنة 100%)
+              var adsEnabled by mutableStateOf(true)
+              var showBanner by mutableStateOf(false)
+              var clicksBetweenInterstitials by mutableIntStateOf(5)
+              var bannerAdId by mutableStateOf("ca-app-pub-7908900046861491/2270086406")
+              var interstitialAdId by mutableStateOf("ca-app-pub-7908900046861491/2270086406")
+              var videoInterstitialId by mutableStateOf("ca-app-pub-7908900046861491/1971451938")
+              var appOpenAdId by mutableStateOf("ca-app-pub-7908900046861491/2390254337")
+              var defaultUrl by mutableStateOf("https://algeria.blsinternational.com/login")
+              var alarmMsg11am by mutableStateOf("لا تنسى حجز الموعد يفتح اليوم مساءا")
+              var alarmMsg430pm by mutableStateOf("تبقى 30 دقيقة على موعد فتح الموقع للحجز اتمنى ان تحجز هذه المرة")
+
+              fun init(context: Context) {
+                  loadCachedConfig(context)
+                  fetchRemoteConfig(context)
+              }
+
+              private fun loadCachedConfig(context: Context) {
+                  val prefs = context.getSharedPreferences("apex_remote_config", Context.MODE_PRIVATE)
+                  adsEnabled = prefs.getBoolean("ads_enabled", adsEnabled)
+                  showBanner = prefs.getBoolean("show_banner", showBanner)
+                  clicksBetweenInterstitials = prefs.getInt("clicks_between_interstitials", clicksBetweenInterstitials)
+                  bannerAdId = prefs.getString("banner_ad_id", bannerAdId) ?: bannerAdId
+                  interstitialAdId = prefs.getString("interstitial_ad_id", interstitialAdId) ?: interstitialAdId
+                  videoInterstitialId = prefs.getString("video_interstitial_id", videoInterstitialId) ?: videoInterstitialId
+                  appOpenAdId = prefs.getString("app_open_ad_id", appOpenAdId) ?: appOpenAdId
+                  defaultUrl = prefs.getString("default_url", defaultUrl) ?: defaultUrl
+                  alarmMsg11am = prefs.getString("alarm_msg_11am", alarmMsg11am) ?: alarmMsg11am
+                  alarmMsg430pm = prefs.getString("alarm_msg_430pm", alarmMsg430pm) ?: alarmMsg430pm
+              }
+
+              fun fetchRemoteConfig(context: Context) {
+                  CoroutineScope(Dispatchers.IO).launch {
+                      try {
+                          val url = URL(configUrl)
+                          val conn = url.openConnection() as HttpURLConnection
+                          conn.connectTimeout = 5000
+                          conn.readTimeout = 5000
+                          conn.requestMethod = "GET"
+
+                          if (conn.responseCode == 200) {
+                              val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                              val json = JSONObject(jsonStr)
+
+                              adsEnabled = json.optBoolean("ads_enabled", adsEnabled)
+                              showBanner = json.optBoolean("show_banner", showBanner)
+                              clicksBetweenInterstitials = json.optInt("clicks_between_interstitials", clicksBetweenInterstitials)
+                              bannerAdId = json.optString("banner_ad_id", bannerAdId)
+                              interstitialAdId = json.optString("interstitial_ad_id", interstitialAdId)
+                              videoInterstitialId = json.optString("video_interstitial_id", videoInterstitialId)
+                              appOpenAdId = json.optString("app_open_ad_id", appOpenAdId)
+                              defaultUrl = json.optString("default_url", defaultUrl)
+                              alarmMsg11am = json.optString("alarm_msg_11am", alarmMsg11am)
+                              alarmMsg430pm = json.optString("alarm_msg_430pm", alarmMsg430pm)
+
+                              val prefs = context.getSharedPreferences("apex_remote_config", Context.MODE_PRIVATE)
+                              prefs.edit()
+                                  .putBoolean("ads_enabled", adsEnabled)
+                                  .putBoolean("show_banner", showBanner)
+                                  .putInt("clicks_between_interstitials", clicksBetweenInterstitials)
+                                  .putString("banner_ad_id", bannerAdId)
+                                  .putString("interstitial_ad_id", interstitialAdId)
+                                  .putString("video_interstitial_id", videoInterstitialId)
+                                  .putString("app_open_ad_id", appOpenAdId)
+                                  .putString("default_url", defaultUrl)
+                                  .putString("alarm_msg_11am", alarmMsg11am)
+                                  .putString("alarm_msg_430pm", alarmMsg430pm)
+                                  .apply()
+                          }
+                      } catch (ignored: Exception) {}
+                  }
+              }
+          }
+          EOF
+
           cat << 'EOF' > app/src/main/java/com/apex/browser/ApexApp.kt
           package com.apex.browser
 
@@ -273,6 +367,7 @@ jobs:
               override fun onCreate() {
                   super.onCreate()
                   registerActivityLifecycleCallbacks(this)
+                  RemoteConfigManager.init(this)
                   AdManager.init(this)
                   AlarmScheduler.scheduleAllAlarms(this)
               }
@@ -282,7 +377,6 @@ jobs:
                   activityCount++
                   if (activityCount == 1 && !isAppInForeground) {
                       isAppInForeground = true
-                      // يظهر إعلان فتح التطبيق عند العودة من الخلفية
                       AdManager.showAppOpenAdIfAvailable(activity)
                   }
               }
@@ -326,10 +420,6 @@ jobs:
           import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 
           object AdManager {
-              private const val APP_OPEN_AD_ID = "ca-app-pub-7908900046861491/2390254337"
-              private const val VIDEO_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/1971451938"
-              private const val REGULAR_INTERSTITIAL_ID = "ca-app-pub-7908900046861491/2270086406"
-
               private var appOpenAd: AppOpenAd? = null
               private var isAppOpenLoading = false
               private var appOpenLoadTime: Long = 0
@@ -349,19 +439,18 @@ jobs:
                   loadRegularInterstitial(context)
               }
 
-              // 1. نظام إعلان فتح التطبيق (عند البداية والعودة من الخلفية)
               private fun isAppOpenAdAvailable(): Boolean {
                   return appOpenAd != null && (System.currentTimeMillis() - appOpenLoadTime) < (4 * 3600 * 1000L)
               }
 
               fun loadAppOpenAd(context: Context) {
-                  if (isAppOpenLoading || isAppOpenAdAvailable()) return
+                  if (!RemoteConfigManager.adsEnabled || isAppOpenLoading || isAppOpenAdAvailable()) return
                   isAppOpenLoading = true
 
                   val request = AdRequest.Builder().build()
                   AppOpenAd.load(
                       context,
-                      APP_OPEN_AD_ID,
+                      RemoteConfigManager.appOpenAdId,
                       request,
                       object : AppOpenAd.AppOpenAdLoadCallback() {
                           override fun onAdLoaded(ad: AppOpenAd) {
@@ -378,7 +467,7 @@ jobs:
               }
 
               fun showAppOpenAdIfAvailable(activity: Activity) {
-                  if (isShowingAd) return
+                  if (!RemoteConfigManager.adsEnabled || isShowingAd) return
 
                   if (!isAppOpenAdAvailable()) {
                       loadAppOpenAd(activity)
@@ -405,7 +494,7 @@ jobs:
               }
 
               fun loadAndShowAppOpenAdFirstTime(activity: Activity) {
-                  if (isShowingAd) return
+                  if (!RemoteConfigManager.adsEnabled || isShowingAd) return
                   if (isAppOpenAdAvailable()) {
                       showAppOpenAdIfAvailable(activity)
                       return
@@ -414,7 +503,7 @@ jobs:
                   val request = AdRequest.Builder().build()
                   AppOpenAd.load(
                       activity,
-                      APP_OPEN_AD_ID,
+                      RemoteConfigManager.appOpenAdId,
                       request,
                       object : AppOpenAd.AppOpenAdLoadCallback() {
                           override fun onAdLoaded(ad: AppOpenAd) {
@@ -430,9 +519,8 @@ jobs:
                   )
               }
 
-              // 2. نظام الإعلان البيني للفيديو (Auto Clicker) مع التحميل المسبق
               fun loadVideoInterstitial(context: Context, onLoaded: (() -> Unit)? = null) {
-                  if (videoInterstitialAd != null) {
+                  if (!RemoteConfigManager.adsEnabled || videoInterstitialAd != null) {
                       onLoaded?.invoke()
                       return
                   }
@@ -442,7 +530,7 @@ jobs:
                   val request = AdRequest.Builder().build()
                   InterstitialAd.load(
                       context,
-                      VIDEO_INTERSTITIAL_ID,
+                      RemoteConfigManager.videoInterstitialId,
                       request,
                       object : InterstitialAdLoadCallback() {
                           override fun onAdLoaded(ad: InterstitialAd) {
@@ -458,9 +546,8 @@ jobs:
                   )
               }
 
-              // 3. نظام الإعلان البيني القياسي مع التحميل المسبق
               fun loadRegularInterstitial(context: Context, onLoaded: (() -> Unit)? = null) {
-                  if (regularInterstitialAd != null) {
+                  if (!RemoteConfigManager.adsEnabled || regularInterstitialAd != null) {
                       onLoaded?.invoke()
                       return
                   }
@@ -470,7 +557,7 @@ jobs:
                   val request = AdRequest.Builder().build()
                   InterstitialAd.load(
                       context,
-                      REGULAR_INTERSTITIAL_ID,
+                      RemoteConfigManager.interstitialAdId,
                       request,
                       object : InterstitialAdLoadCallback() {
                           override fun onAdLoaded(ad: InterstitialAd) {
@@ -486,8 +573,12 @@ jobs:
                   )
               }
 
-              // تفعيل الـ Auto Clicker: تجربة إعلان الفيديو أولاً، وفي حال التعذر يعوض بالبيني
               fun showAdForAutoClick(activity: Activity, onAdCompleted: () -> Unit) {
+                  if (!RemoteConfigManager.adsEnabled) {
+                      onAdCompleted()
+                      return
+                  }
+
                   if (videoInterstitialAd != null) {
                       val ad = videoInterstitialAd!!
                       ad.fullScreenContentCallback = object : FullScreenContentCallback() {
@@ -515,7 +606,7 @@ jobs:
                   val request = AdRequest.Builder().build()
                   InterstitialAd.load(
                       activity,
-                      VIDEO_INTERSTITIAL_ID,
+                      RemoteConfigManager.videoInterstitialId,
                       request,
                       object : InterstitialAdLoadCallback() {
                           override fun onAdLoaded(ad: InterstitialAd) {
@@ -543,6 +634,11 @@ jobs:
               }
 
               private fun showFallbackInterstitial(activity: Activity, onAdCompleted: () -> Unit) {
+                  if (!RemoteConfigManager.adsEnabled) {
+                      onAdCompleted()
+                      return
+                  }
+
                   if (regularInterstitialAd != null) {
                       val ad = regularInterstitialAd!!
                       ad.fullScreenContentCallback = object : FullScreenContentCallback() {
@@ -567,7 +663,7 @@ jobs:
                       val request = AdRequest.Builder().build()
                       InterstitialAd.load(
                           activity,
-                          REGULAR_INTERSTITIAL_ID,
+                          RemoteConfigManager.interstitialAdId,
                           request,
                           object : InterstitialAdLoadCallback() {
                               override fun onAdLoaded(ad: InterstitialAd) {
@@ -589,9 +685,6 @@ jobs:
                                   ad.show(activity)
                               }
                               override fun onAdFailedToLoad(error: LoadAdError) {
-                                  if (error.code == 3) {
-                                      Toast.makeText(activity, "تنبيه AdMob: لا يوجد إعلان متاح حالياً (No Fill)", Toast.LENGTH_SHORT).show()
-                                  }
                                   onAdCompleted()
                               }
                           }
@@ -599,7 +692,6 @@ jobs:
                   }
               }
 
-              // الإعلان البيني الذي يظهر كل 5 نقرات
               fun showGeneralInterstitial(activity: Activity, onFinished: () -> Unit = {}) {
                   showFallbackInterstitial(activity, onFinished)
               }
@@ -708,7 +800,7 @@ jobs:
                   val dayOfWeek: Int,
                   val hour: Int,
                   val minute: Int,
-                  val message: String
+                  val defaultMessage: String
               )
 
               val alarms = listOf(
@@ -741,14 +833,16 @@ jobs:
                   val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
                   for (alarm in alarms) {
                       val trigger = calculateNextTrigger(alarm.dayOfWeek, alarm.hour, alarm.minute)
-                      setSystemAlarm(context, alarmManager, alarm.reqCode, trigger, alarm.message, alarm.dayOfWeek, alarm.hour, alarm.minute)
+                      val msg = if (alarm.hour == 11) RemoteConfigManager.alarmMsg11am else RemoteConfigManager.alarmMsg430pm
+                      setSystemAlarm(context, alarmManager, alarm.reqCode, trigger, msg, alarm.dayOfWeek, alarm.hour, alarm.minute)
                   }
               }
 
-              fun scheduleNextOccurrence(context: Context, reqCode: Int, day: Int, hour: Int, minute: Int, message: String) {
+              fun scheduleNextOccurrence(context: Context, reqCode: Int, day: Int, hour: Int, minute: Int) {
                   val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
                   val trigger = calculateNextTrigger(day, hour, minute)
-                  setSystemAlarm(context, alarmManager, reqCode, trigger, message, day, hour, minute)
+                  val msg = if (hour == 11) RemoteConfigManager.alarmMsg11am else RemoteConfigManager.alarmMsg430pm
+                  setSystemAlarm(context, alarmManager, reqCode, trigger, msg, day, hour, minute)
               }
 
               private fun setSystemAlarm(
@@ -822,7 +916,7 @@ jobs:
                   ChimePlayer.playCalmChime3Seconds(context)
                   showNotification(context, reqCode, message)
 
-                  AlarmScheduler.scheduleNextOccurrence(context, reqCode, day, hour, minute, message)
+                  AlarmScheduler.scheduleNextOccurrence(context, reqCode, day, hour, minute)
               }
 
               private fun showNotification(context: Context, notificationId: Int, message: String) {
@@ -969,6 +1063,9 @@ jobs:
           import androidx.compose.ui.viewinterop.AndroidView
           import androidx.webkit.WebSettingsCompat
           import androidx.webkit.WebViewFeature
+          import com.google.android.gms.ads.AdRequest
+          import com.google.android.gms.ads.AdSize
+          import com.google.android.gms.ads.AdView
           import kotlinx.coroutines.delay
           import kotlinx.coroutines.isActive
           import java.net.URLEncoder
@@ -1019,7 +1116,7 @@ jobs:
               val keyboardController = LocalSoftwareKeyboardController.current
               val activity = context as? Activity
 
-              val initialUrl = "https://algeria.blsinternational.com/login"
+              val initialUrl = RemoteConfigManager.defaultUrl
 
               var currentUrl by remember { mutableStateOf(initialUrl) }
               var inputUrl by remember { mutableStateOf("") }
@@ -1049,7 +1146,7 @@ jobs:
               fun registerButtonClick(action: () -> Unit) {
                   buttonClickCount++
                   action()
-                  if (buttonClickCount % 5 == 0) {
+                  if (buttonClickCount % RemoteConfigManager.clicksBetweenInterstitials == 0) {
                       if (activity != null) {
                           AdManager.showGeneralInterstitial(activity) {}
                       }
@@ -1390,209 +1487,3 @@ jobs:
                                           .clip(CircleShape)
                                           .border(2.dp, Color(0xFFEF4444), CircleShape)
                                           .background(Color(0x33EF4444)),
-                                      contentAlignment = Alignment.Center
-                                  ) {
-                                      Icon(
-                                          imageVector = Icons.Default.Adjust,
-                                          contentDescription = "Target Reticle",
-                                          tint = Color(0xFFEF4444),
-                                          modifier = Modifier.size(24.dp)
-                                      )
-                                  }
-                              }
-                          }
-                      }
-                  }
-
-                  Box(
-                      modifier = Modifier
-                          .offset { IntOffset(bubbleOffset.x.roundToInt(), bubbleOffset.y.roundToInt()) }
-                          .size(52.dp)
-                          .shadow(12.dp, CircleShape)
-                          .clip(CircleShape)
-                          .background(
-                              Brush.linearGradient(
-                                  listOf(Color(0xFF38BDF8), Color(0xFF2563EB))
-                              )
-                          )
-                          .pointerInput(Unit) {
-                              detectDragGestures { change, dragAmount ->
-                                  change.consume()
-                                  bubbleOffset += dragAmount
-                              }
-                          }
-                          .clickable(
-                              indication = null,
-                              interactionSource = remember { MutableInteractionSource() }
-                          ) {
-                              registerButtonClick {
-                                  hudExpanded = !hudExpanded
-                              }
-                          },
-                      contentAlignment = Alignment.Center
-                  ) {
-                      Icon(
-                          imageVector = if (hudExpanded) Icons.Default.Close else Icons.Default.Bolt,
-                          contentDescription = "HUD Toggle",
-                          tint = Color.White,
-                          modifier = Modifier.size(28.dp)
-                      )
-                  }
-
-                  AnimatedVisibility(
-                      visible = hudExpanded,
-                      enter = fadeIn(),
-                      exit = fadeOut(),
-                      modifier = Modifier
-                          .align(Alignment.BottomCenter)
-                          .padding(16.dp)
-                  ) {
-                      Surface(
-                          color = Color(0xEE0F172A),
-                          shape = RoundedCornerShape(20.dp),
-                          border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x4438BDF8)),
-                          shadowElevation = 16.dp,
-                          modifier = Modifier.fillMaxWidth()
-                      ) {
-                          Column(modifier = Modifier.padding(18.dp)) {
-                              Row(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Text(
-                                      text = "Apex Automation Panel",
-                                      color = Color(0xFF38BDF8),
-                                      fontWeight = FontWeight.Bold,
-                                      fontSize = 16.sp
-                                  )
-                                  IconButton(onClick = {
-                                      registerButtonClick { hudExpanded = false }
-                                  }) {
-                                      Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.LightGray)
-                                  }
-                              }
-
-                              HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(12.dp))
-
-                              Row(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column {
-                                      Text(text = "Auto Refresh Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                      Text(
-                                          text = if (autoRefreshEnabled) "Next reload in ${countdownSeconds}s" else "Disabled",
-                                          color = if (autoRefreshEnabled) Color(0xFF4ADE80) else Color.Gray,
-                                          fontSize = 12.sp
-                                      )
-                                  }
-                                  Switch(
-                                      checked = autoRefreshEnabled,
-                                      onCheckedChange = { isChecked ->
-                                          registerButtonClick {
-                                              if (isChecked) {
-                                                  if (activity != null) {
-                                                      AdManager.showGeneralInterstitial(activity) {
-                                                          autoRefreshEnabled = true
-                                                      }
-                                                  } else {
-                                                      autoRefreshEnabled = true
-                                                  }
-                                              } else {
-                                                  autoRefreshEnabled = false
-                                              }
-                                          }
-                                      },
-                                      colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF38BDF8))
-                                  )
-                              }
-
-                              Slider(
-                                  value = autoRefreshInterval.toFloat(),
-                                  onValueChange = { autoRefreshInterval = it.roundToInt() },
-                                  valueRange = 5f..60f,
-                                  steps = 55,
-                                  enabled = autoRefreshEnabled
-                              )
-
-                              Spacer(modifier = Modifier.height(12.dp))
-                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(12.dp))
-
-                              Row(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column {
-                                      Text(text = "Auto Clicker Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                      Text(
-                                          text = if (autoClickerEnabled) "Interval: ${clickIntervalMs}ms (Active)" else "Reticle target inactive",
-                                          color = if (autoClickerEnabled) Color(0xFFEF4444) else Color.Gray,
-                                          fontSize = 12.sp
-                                      )
-                                  }
-                                  Switch(
-                                      checked = autoClickerEnabled,
-                                      onCheckedChange = { isChecked ->
-                                          registerButtonClick {
-                                              if (isChecked) {
-                                                  if (activity != null) {
-                                                      AdManager.showAdForAutoClick(activity) {
-                                                          autoClickerEnabled = true
-                                                      }
-                                                  } else {
-                                                      autoClickerEnabled = true
-                                                  }
-                                              } else {
-                                                  autoClickerEnabled = false
-                                              }
-                                          }
-                                      },
-                                      colors = SwitchDefaults.colors(
-                                          checkedThumbColor = Color(0xFFEF4444),
-                                          checkedTrackColor = Color(0x66EF4444)
-                                      )
-                                  )
-                              }
-
-                              Slider(
-                                  value = clickIntervalMs.toFloat(),
-                                  onValueChange = { clickIntervalMs = it.toLong() },
-                                  valueRange = 200f..4000f,
-                                  steps = 38,
-                                  enabled = autoClickerEnabled
-                              )
-                          }
-                      }
-                  }
-              }
-          }
-          EOF
-
-      - name: Install Gradle & Generate Wrapper
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y gradle
-          gradle wrapper --gradle-version 8.7
-          chmod +x gradlew
-
-      - name: Build Signed Release APK & Play Store Bundle (AAB)
-        run: |
-          ./gradlew assembleRelease bundleRelease --stacktrace --no-daemon
-
-      - name: Upload Signed Production APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ApexBrowser-Release-APK
-          path: app/build/outputs/apk/release/*.apk
-          retention-days: 30
-
-      - name: Upload Google Play Store Bundle (AAB)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ApexBrowser-PlayStore-AAB
-          path: app/build/outputs/bundle/release/*.aab
-          retention-days: 30
