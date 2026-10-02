@@ -606,7 +606,7 @@ jobs:
                       return
                   }
 
-                  Toast.makeText(activity, " جاري تغعيل الأداة ...", Toast.LENGTH_SHORT).show()
+                  Toast.makeText(activity, "جاري تفعيل الأداة ...", Toast.LENGTH_SHORT).show()
                   val request = AdRequest.Builder().build()
                   InterstitialAd.load(
                       activity,
@@ -1066,6 +1066,7 @@ jobs:
           import androidx.compose.ui.unit.sp
           import androidx.compose.ui.viewinterop.AndroidView
           import androidx.webkit.WebSettingsCompat
+          import androidx.webkit.WebViewCompat
           import androidx.webkit.WebViewFeature
           import com.google.android.gms.ads.AdRequest
           import com.google.android.gms.ads.AdSize
@@ -1157,8 +1158,9 @@ jobs:
                   }
               }
 
-              val cleanMobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-              val cleanDesktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+              // أحدث User-Agent رسمي مطابق لـ Chrome 128
+              val cleanMobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+              val cleanDesktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
               BackHandler(enabled = canGoBack) {
                   registerButtonClick {
@@ -1381,6 +1383,7 @@ jobs:
                                           ViewGroup.LayoutParams.MATCH_PARENT
                                       )
 
+                                      // 1. إزالة هيدر X-Requested-With بالكامل
                                       if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
                                           WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
                                       }
@@ -1405,18 +1408,23 @@ jobs:
                                       cookieManager.setAcceptCookie(true)
                                       cookieManager.setAcceptThirdPartyCookies(this, true)
 
+                                      // 2. سكربت التخفي المتقدم لمحاكاة Google Chrome الأصلي
                                       val stealthJs = """
                                           (function() {
                                               try {
                                                   delete Object.getPrototypeOf(navigator).webdriver;
                                                   Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
                                                   window.chrome = { runtime: {}, app: {}, loadTimes: function() {}, csi: function() {} };
-                                                  if (!window.navigator.languages || window.navigator.languages.length === 0) {
-                                                      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'fr'] });
-                                                  }
+                                                  Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'ar', 'en-US', 'en'] });
+                                                  Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
                                               } catch (e) {}
                                           })();
                                       """.trimIndent()
+
+                                      // حقن السكربت لحظياً قبل قراءة المستند
+                                      if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                                          WebViewCompat.addDocumentStartJavaScript(this, stealthJs, setOf("*"))
+                                      }
 
                                       webViewClient = object : WebViewClient() {
                                           override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
