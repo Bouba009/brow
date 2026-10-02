@@ -169,6 +169,7 @@ jobs:
               implementation("androidx.compose.material3:material3")
               implementation("androidx.compose.material:material-icons-extended")
 
+              // WebKit المتقدمة للتحكم في Client Hints وإلغاء X-Requested-With
               implementation("androidx.webkit:webkit:1.10.0")
 
               implementation("com.google.android.gms:play-services-ads:23.0.0")
@@ -234,6 +235,7 @@ jobs:
                   android:label="@string/app_name"
                   android:supportsRtl="true"
                   android:usesCleartextTraffic="true"
+                  android:hardwareAccelerated="true"
                   android:theme="@android:style/Theme.Material.NoActionBar">
 
                   <meta-data
@@ -606,7 +608,7 @@ jobs:
                       return
                   }
 
-                  Toast.makeText(activity, "جاري تفعيل الأداة ...", Toast.LENGTH_SHORT).show()
+                  Toast.makeText(activity, "جاري تحضير الإعلان...", Toast.LENGTH_SHORT).show()
                   val request = AdRequest.Builder().build()
                   InterstitialAd.load(
                       activity,
@@ -1011,7 +1013,6 @@ jobs:
           import android.content.pm.PackageManager
           import android.graphics.Bitmap
           import android.net.Uri
-          import android.net.http.SslError
           import android.os.Build
           import android.os.Bundle
           import android.os.SystemClock
@@ -1019,12 +1020,12 @@ jobs:
           import android.view.MotionEvent
           import android.view.ViewGroup
           import android.webkit.CookieManager
-          import android.webkit.SslErrorHandler
           import android.webkit.WebChromeClient
           import android.webkit.WebResourceRequest
           import android.webkit.WebSettings
           import android.webkit.WebView
           import android.webkit.WebViewClient
+          import android.widget.Toast
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.BackHandler
           import androidx.activity.compose.setContent
@@ -1065,6 +1066,7 @@ jobs:
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
           import androidx.compose.ui.viewinterop.AndroidView
+          import androidx.webkit.UserAgentMetadata
           import androidx.webkit.WebSettingsCompat
           import androidx.webkit.WebViewCompat
           import androidx.webkit.WebViewFeature
@@ -1125,7 +1127,6 @@ jobs:
 
               var currentUrl by remember { mutableStateOf(initialUrl) }
               var inputUrl by remember { mutableStateOf("") }
-              var pageTitle by remember { mutableStateOf("ApexBrowser") }
               var progress by remember { mutableStateOf(0f) }
               var isLoading by remember { mutableStateOf(false) }
               var canGoBack by remember { mutableStateOf(false) }
@@ -1158,7 +1159,6 @@ jobs:
                   }
               }
 
-              // أحدث User-Agent رسمي مطابق لـ Chrome 128
               val cleanMobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
               val cleanDesktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
@@ -1383,9 +1383,42 @@ jobs:
                                           ViewGroup.LayoutParams.MATCH_PARENT
                                       )
 
-                                      // 1. إزالة هيدر X-Requested-With بالكامل
+                                      // 1. منع إرسال هيدر X-Requested-With
                                       if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
                                           WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+                                      }
+
+                                      // 2. تزييف هيدر Client Hints ليطابق Google Chrome بدلاً من Android WebView
+                                      if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+                                          val brandChrome = UserAgentMetadata.BrandVersion.Builder()
+                                              .setBrand("Google Chrome")
+                                              .setMajorVersion("128")
+                                              .setFullVersion("128.0.6613.88")
+                                              .build()
+                                          val brandChromium = UserAgentMetadata.BrandVersion.Builder()
+                                              .setBrand("Chromium")
+                                              .setMajorVersion("128")
+                                              .setFullVersion("128.0.6613.88")
+                                              .build()
+                                          val brandNotABrand = UserAgentMetadata.BrandVersion.Builder()
+                                              .setBrand("Not_A Brand")
+                                              .setMajorVersion("24")
+                                              .setFullVersion("24.0.0.0")
+                                              .build()
+
+                                          val metadata = UserAgentMetadata.Builder()
+                                              .setBrandVersionList(listOf(brandNotABrand, brandChromium, brandChrome))
+                                              .setFullVersion("128.0.6613.88")
+                                              .setPlatform("Android")
+                                              .setPlatformVersion("14.0.0")
+                                              .setArchitecture("")
+                                              .setModel("K")
+                                              .setMobile(true)
+                                              .setBitness(64)
+                                              .setWow64(false)
+                                              .build()
+
+                                          WebSettingsCompat.setUserAgentMetadata(settings, metadata)
                                       }
 
                                       with(settings) {
@@ -1402,26 +1435,26 @@ jobs:
                                           userAgentString = cleanMobileUA
                                           allowFileAccess = true
                                           allowContentAccess = true
+                                          javaScriptCanOpenWindowsAutomatically = true
+                                          mediaPlaybackRequiresUserGesture = false
                                       }
 
                                       val cookieManager = CookieManager.getInstance()
                                       cookieManager.setAcceptCookie(true)
                                       cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                                      // 2. سكربت التخفي المتقدم لمحاكاة Google Chrome الأصلي
+                                      // 3. سكربت تخفٍّ نقي وخالٍ من الفخاخ البرمجية
                                       val stealthJs = """
                                           (function() {
                                               try {
                                                   delete Object.getPrototypeOf(navigator).webdriver;
                                                   Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                                                  window.chrome = { runtime: {}, app: {}, loadTimes: function() {}, csi: function() {} };
+                                                  window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {} };
                                                   Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'ar', 'en-US', 'en'] });
-                                                  Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
                                               } catch (e) {}
                                           })();
                                       """.trimIndent()
 
-                                      // حقن السكربت لحظياً قبل قراءة المستند
                                       if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                                           WebViewCompat.addDocumentStartJavaScript(this, stealthJs, setOf("*"))
                                       }
@@ -1446,13 +1479,8 @@ jobs:
                                               isLoading = false
                                               canGoBack = canGoBack()
                                               canGoForward = canGoForward()
-                                              pageTitle = view?.title ?: "ApexBrowser"
                                               evaluateJavascript(stealthJs, null)
                                               cookieManager.flush()
-                                          }
-
-                                          override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-                                              handler?.proceed()
                                           }
                                       }
 
@@ -1598,7 +1626,32 @@ jobs:
                               }
 
                               HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(12.dp))
+                              Spacer(modifier = Modifier.height(10.dp))
+
+                              // زر مسح الكاش والجلسة المحظورة بنقرة واحدة
+                              Button(
+                                  onClick = {
+                                      webViewInstance?.let { wv ->
+                                          wv.clearCache(true)
+                                          wv.clearHistory()
+                                          CookieManager.getInstance().removeAllCookies(null)
+                                          CookieManager.getInstance().flush()
+                                          wv.reload()
+                                          Toast.makeText(context, "تم مسح الجلسة وتجديد الاتصال بنجاح!", Toast.LENGTH_SHORT).show()
+                                      }
+                                  },
+                                  colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                                  shape = RoundedCornerShape(10.dp),
+                                  modifier = Modifier.fillMaxWidth()
+                              ) {
+                                  Icon(Icons.Default.CleaningServices, contentDescription = null, tint = Color(0xFF38BDF8))
+                                  Spacer(modifier = Modifier.width(8.dp))
+                                  Text("مسح الجلسة والكوكيز (فك الحظر)", color = Color.White, fontSize = 13.sp)
+                              }
+
+                              Spacer(modifier = Modifier.height(10.dp))
+                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
+                              Spacer(modifier = Modifier.height(10.dp))
 
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
@@ -1642,9 +1695,9 @@ jobs:
                                   enabled = autoRefreshEnabled
                               )
 
-                              Spacer(modifier = Modifier.height(12.dp))
+                              Spacer(modifier = Modifier.height(10.dp))
                               HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(12.dp))
+                              Spacer(modifier = Modifier.height(10.dp))
 
                               Row(
                                   modifier = Modifier.fillMaxWidth(),
