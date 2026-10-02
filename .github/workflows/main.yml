@@ -21,6 +21,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+          cache-disabled: true
+
       - name: Accept Android SDK Licenses
         run: |
           yes | sdkmanager --licenses || true
@@ -43,14 +49,14 @@ jobs:
 
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-          cat << 'EOF' > gradle.properties
+          cat << 'EOF_GRADLE_PROPERTIES' > gradle.properties
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           android.useAndroidX=true
           android.nonTransitiveRClass=true
           kotlin.code.style=official
-          EOF
+          EOF_GRADLE_PROPERTIES
 
-          cat << 'EOF' > settings.gradle.kts
+          cat << 'EOF_SETTINGS_GRADLE' > settings.gradle.kts
           pluginManagement {
               repositories {
                   google()
@@ -67,16 +73,16 @@ jobs:
           }
           rootProject.name = "ApexBrowser"
           include(":app")
-          EOF
+          EOF_SETTINGS_GRADLE
 
-          cat << 'EOF' > build.gradle.kts
+          cat << 'EOF_ROOT_BUILD' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.4.1" apply false
               id("org.jetbrains.kotlin.android") version "1.9.23" apply false
           }
-          EOF
+          EOF_ROOT_BUILD
 
-          cat << 'EOF' > app/build.gradle.kts
+          cat << 'EOF_APP_BUILD' > app/build.gradle.kts
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -167,17 +173,17 @@ jobs:
 
               implementation("com.google.android.gms:play-services-ads:23.0.0")
           }
-          EOF
+          EOF_APP_BUILD
 
           touch app/proguard-rules.pro
 
-          cat << 'EOF' > app/src/main/res/values/strings.xml
+          cat << 'EOF_STRINGS' > app/src/main/res/values/strings.xml
           <resources>
               <string name="app_name">ApexBrowser</string>
           </resources>
-          EOF
+          EOF_STRINGS
 
-          cat << 'EOF' > app/src/main/res/drawable/ic_browser_logo.xml
+          cat << 'EOF_LOGO' > app/src/main/res/drawable/ic_browser_logo.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp"
               android:height="108dp"
@@ -193,9 +199,9 @@ jobs:
                   android:fillColor="#FF38BDF8"
                   android:pathData="M52,32l-14,24h10l-4,18l18,-24h-10z"/>
           </vector>
-          EOF
+          EOF_LOGO
 
-          cat << 'EOF' > app/src/main/res/drawable/ic_notification.xml
+          cat << 'EOF_NOTIF' > app/src/main/res/drawable/ic_notification.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
               android:height="24dp"
@@ -205,9 +211,9 @@ jobs:
                   android:fillColor="#FFFFFFFF"
                   android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.9,2 2,2zM18,16v-5c0,-3.07 -1.63,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.64,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z"/>
           </vector>
-          EOF
+          EOF_NOTIF
 
-          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          cat << 'EOF_MANIFEST' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -256,9 +262,9 @@ jobs:
               </application>
 
           </manifest>
-          EOF
+          EOF_MANIFEST
 
-          cat << 'EOF' > app/src/main/java/com/apex/browser/RemoteConfigManager.kt
+          cat << 'EOF_CONFIG_MGR' > app/src/main/java/com/apex/browser/RemoteConfigManager.kt
           package com.apex.browser
 
           import android.content.Context
@@ -274,10 +280,8 @@ jobs:
           import java.net.URL
 
           object RemoteConfigManager {
-              // ضع رابط ملف الـ JSON الخاص بك هنا (من GitHub Gist أو موقعك)
               var configUrl = "https://gist.githubusercontent.com/raw/apex_browser_config.json"
 
-              // القيم المتغيرة التي يتم التحكم بها عن بُعد (مع قيم افتراضية آمنة 100%)
               var adsEnabled by mutableStateOf(true)
               var showBanner by mutableStateOf(false)
               var clicksBetweenInterstitials by mutableIntStateOf(5)
@@ -350,9 +354,9 @@ jobs:
                   }
               }
           }
-          EOF
+          EOF_CONFIG_MGR
 
-          cat << 'EOF' > app/src/main/java/com/apex/browser/ApexApp.kt
+          cat << 'EOF_APEX_APP' > app/src/main/java/com/apex/browser/ApexApp.kt
           package com.apex.browser
 
           import android.app.Activity
@@ -402,9 +406,9 @@ jobs:
                   }
               }
           }
-          EOF
+          EOF_APEX_APP
 
-          cat << 'EOF' > app/src/main/java/com/apex/browser/AdManager.kt
+          cat << 'EOF_AD_MANAGER' > app/src/main/java/com/apex/browser/AdManager.kt
           package com.apex.browser
 
           import android.app.Activity
@@ -602,7 +606,7 @@ jobs:
                       return
                   }
 
-                  Toast.makeText(activity, "جاري تحضير الإعلان...", Toast.LENGTH_SHORT).show()
+                  Toast.makeText(activity, " جاري تغعيل الأداة ...", Toast.LENGTH_SHORT).show()
                   val request = AdRequest.Builder().build()
                   InterstitialAd.load(
                       activity,
@@ -696,9 +700,9 @@ jobs:
                   showFallbackInterstitial(activity, onFinished)
               }
           }
-          EOF
+          EOF_AD_MANAGER
 
-          cat << 'EOF' > app/src/main/java/com/apex/browser/AlarmScheduler.kt
+          cat << 'EOF_ALARM_SCHEDULER' > app/src/main/java/com/apex/browser/AlarmScheduler.kt
           package com.apex.browser
 
           import android.app.AlarmManager
@@ -995,9 +999,9 @@ jobs:
                   }
               }
           }
-          EOF
+          EOF_ALARM_SCHEDULER
 
-          cat << 'EOF' > app/src/main/java/com/apex/browser/MainActivity.kt
+          cat << 'EOF_MAIN_ACTIVITY' > app/src/main/java/com/apex/browser/MainActivity.kt
           package com.apex.browser
 
           import android.annotation.SuppressLint
@@ -1487,3 +1491,223 @@ jobs:
                                           .clip(CircleShape)
                                           .border(2.dp, Color(0xFFEF4444), CircleShape)
                                           .background(Color(0x33EF4444)),
+                                      contentAlignment = Alignment.Center
+                                  ) {
+                                      Icon(
+                                          imageVector = Icons.Default.Adjust,
+                                          contentDescription = "Target Reticle",
+                                          tint = Color(0xFFEF4444),
+                                          modifier = Modifier.size(24.dp)
+                                      )
+                                  }
+                              }
+                          }
+                      }
+
+                      if (RemoteConfigManager.adsEnabled && RemoteConfigManager.showBanner) {
+                          AndroidView(
+                              factory = { ctx ->
+                                  AdView(ctx).apply {
+                                      setAdSize(AdSize.BANNER)
+                                      adUnitId = RemoteConfigManager.bannerAdId
+                                      loadAd(AdRequest.Builder().build())
+                                  }
+                              },
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .wrapContentHeight()
+                          )
+                      }
+                  }
+
+                  Box(
+                      modifier = Modifier
+                          .offset { IntOffset(bubbleOffset.x.roundToInt(), bubbleOffset.y.roundToInt()) }
+                          .size(52.dp)
+                          .shadow(12.dp, CircleShape)
+                          .clip(CircleShape)
+                          .background(
+                              Brush.linearGradient(
+                                  listOf(Color(0xFF38BDF8), Color(0xFF2563EB))
+                              )
+                          )
+                          .pointerInput(Unit) {
+                              detectDragGestures { change, dragAmount ->
+                                  change.consume()
+                                  bubbleOffset += dragAmount
+                              }
+                          }
+                          .clickable(
+                              indication = null,
+                              interactionSource = remember { MutableInteractionSource() }
+                          ) {
+                              registerButtonClick {
+                                  hudExpanded = !hudExpanded
+                              }
+                          },
+                      contentAlignment = Alignment.Center
+                  ) {
+                      Icon(
+                          imageVector = if (hudExpanded) Icons.Default.Close else Icons.Default.Bolt,
+                          contentDescription = "HUD Toggle",
+                          tint = Color.White,
+                          modifier = Modifier.size(28.dp)
+                      )
+                  }
+
+                  AnimatedVisibility(
+                      visible = hudExpanded,
+                      enter = fadeIn(),
+                      exit = fadeOut(),
+                      modifier = Modifier
+                          .align(Alignment.BottomCenter)
+                          .padding(16.dp)
+                  ) {
+                      Surface(
+                          color = Color(0xEE0F172A),
+                          shape = RoundedCornerShape(20.dp),
+                          border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x4438BDF8)),
+                          shadowElevation = 16.dp,
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                          Column(modifier = Modifier.padding(18.dp)) {
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Text(
+                                      text = "Apex Automation Panel",
+                                      color = Color(0xFF38BDF8),
+                                      fontWeight = FontWeight.Bold,
+                                      fontSize = 16.sp
+                                  )
+                                  IconButton(onClick = {
+                                      registerButtonClick { hudExpanded = false }
+                                  }) {
+                                      Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.LightGray)
+                                  }
+                              }
+
+                              HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
+                              Spacer(modifier = Modifier.height(12.dp))
+
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Column {
+                                      Text(text = "Auto Refresh Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                      Text(
+                                          text = if (autoRefreshEnabled) "Next reload in ${countdownSeconds}s" else "Disabled",
+                                          color = if (autoRefreshEnabled) Color(0xFF4ADE80) else Color.Gray,
+                                          fontSize = 12.sp
+                                      )
+                                  }
+                                  Switch(
+                                      checked = autoRefreshEnabled,
+                                      onCheckedChange = { isChecked ->
+                                          registerButtonClick {
+                                              if (isChecked) {
+                                                  if (activity != null) {
+                                                      AdManager.showGeneralInterstitial(activity) {
+                                                          autoRefreshEnabled = true
+                                                      }
+                                                  } else {
+                                                      autoRefreshEnabled = true
+                                                  }
+                                              } else {
+                                                  autoRefreshEnabled = false
+                                              }
+                                          }
+                                      },
+                                      colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF38BDF8))
+                                  )
+                              }
+
+                              Slider(
+                                  value = autoRefreshInterval.toFloat(),
+                                  onValueChange = { autoRefreshInterval = it.roundToInt() },
+                                  valueRange = 5f..60f,
+                                  steps = 55,
+                                  enabled = autoRefreshEnabled
+                              )
+
+                              Spacer(modifier = Modifier.height(12.dp))
+                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
+                              Spacer(modifier = Modifier.height(12.dp))
+
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Column {
+                                      Text(text = "Auto Clicker Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                      Text(
+                                          text = if (autoClickerEnabled) "Interval: ${clickIntervalMs}ms (Active)" else "Reticle target inactive",
+                                          color = if (autoClickerEnabled) Color(0xFFEF4444) else Color.Gray,
+                                          fontSize = 12.sp
+                                      )
+                                  }
+                                  Switch(
+                                      checked = autoClickerEnabled,
+                                      onCheckedChange = { isChecked ->
+                                          registerButtonClick {
+                                              if (isChecked) {
+                                                  if (activity != null) {
+                                                      AdManager.showAdForAutoClick(activity) {
+                                                          autoClickerEnabled = true
+                                                      }
+                                                  } else {
+                                                      autoClickerEnabled = true
+                                                  }
+                                              } else {
+                                                  autoClickerEnabled = false
+                                              }
+                                          }
+                                      },
+                                      colors = SwitchDefaults.colors(
+                                          checkedThumbColor = Color(0xFFEF4444),
+                                          checkedTrackColor = Color(0x66EF4444)
+                                      )
+                                  )
+                              }
+
+                              Slider(
+                                  value = clickIntervalMs.toFloat(),
+                                  onValueChange = { clickIntervalMs = it.toLong() },
+                                  valueRange = 200f..4000f,
+                                  steps = 38,
+                                  enabled = autoClickerEnabled
+                              )
+                          }
+                      }
+                  }
+              }
+          }
+          EOF_MAIN_ACTIVITY
+
+      - name: Generate Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.7
+          chmod +x gradlew
+
+      - name: Build Signed Release APK & Play Store Bundle (AAB)
+        run: |
+          ./gradlew assembleRelease bundleRelease --stacktrace --no-daemon
+
+      - name: Upload Signed Production APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ApexBrowser-Release-APK
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Upload Google Play Store Bundle (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ApexBrowser-PlayStore-AAB
+          path: app/build/outputs/bundle/release/*.aab
+          retention-days: 30
