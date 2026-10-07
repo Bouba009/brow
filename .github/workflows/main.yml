@@ -170,7 +170,7 @@ jobs:
               implementation("androidx.compose.material:material-icons-extended")
 
               // WebKit المتقدمة للتحكم في Client Hints وإلغاء X-Requested-With
-              implementation("androidx.webkit:webkit:1.10.0")
+              implementation("androidx.browser:browser:1.8.0")
 
               implementation("com.google.android.gms:play-services-ads:23.0.0")
           }
@@ -291,7 +291,7 @@ jobs:
               var interstitialAdId by mutableStateOf("ca-app-pub-7908900046861491/2270086406")
               var videoInterstitialId by mutableStateOf("ca-app-pub-7908900046861491/1971451938")
               var appOpenAdId by mutableStateOf("ca-app-pub-7908900046861491/2390254337")
-              var defaultUrl by mutableStateOf("https://algeria.blsinternational.com/login")
+              var defaultUrl by mutableStateOf("https://algeria.blsspainvisa.com/")
               var alarmMsg11am by mutableStateOf("لا تنسى حجز الموعد يفتح اليوم مساءا")
               var alarmMsg430pm by mutableStateOf("تبقى 30 دقيقة على موعد فتح الموقع للحجز اتمنى ان تحجز هذه المرة")
 
@@ -309,7 +309,6 @@ jobs:
                   interstitialAdId = prefs.getString("interstitial_ad_id", interstitialAdId) ?: interstitialAdId
                   videoInterstitialId = prefs.getString("video_interstitial_id", videoInterstitialId) ?: videoInterstitialId
                   appOpenAdId = prefs.getString("app_open_ad_id", appOpenAdId) ?: appOpenAdId
-                  defaultUrl = prefs.getString("default_url", defaultUrl) ?: defaultUrl
                   alarmMsg11am = prefs.getString("alarm_msg_11am", alarmMsg11am) ?: alarmMsg11am
                   alarmMsg430pm = prefs.getString("alarm_msg_430pm", alarmMsg430pm) ?: alarmMsg430pm
               }
@@ -334,7 +333,6 @@ jobs:
                               interstitialAdId = json.optString("interstitial_ad_id", interstitialAdId)
                               videoInterstitialId = json.optString("video_interstitial_id", videoInterstitialId)
                               appOpenAdId = json.optString("app_open_ad_id", appOpenAdId)
-                              defaultUrl = json.optString("default_url", defaultUrl)
                               alarmMsg11am = json.optString("alarm_msg_11am", alarmMsg11am)
                               alarmMsg430pm = json.optString("alarm_msg_430pm", alarmMsg430pm)
 
@@ -347,7 +345,6 @@ jobs:
                                   .putString("interstitial_ad_id", interstitialAdId)
                                   .putString("video_interstitial_id", videoInterstitialId)
                                   .putString("app_open_ad_id", appOpenAdId)
-                                  .putString("default_url", defaultUrl)
                                   .putString("alarm_msg_11am", alarmMsg11am)
                                   .putString("alarm_msg_430pm", alarmMsg430pm)
                                   .apply()
@@ -383,7 +380,6 @@ jobs:
                   activityCount++
                   if (activityCount == 1 && !isAppInForeground) {
                       isAppInForeground = true
-                      AdManager.showAppOpenAdIfAvailable(activity)
                   }
               }
 
@@ -1005,20 +1001,18 @@ jobs:
 
           cat << 'EOF_MAIN_ACTIVITY' > app/src/main/java/com/apex/browser/MainActivity.kt
           package com.apex.browser
-
+          
           import android.annotation.SuppressLint
-          import android.app.Activity
           import android.app.AlarmManager
+          import android.app.Activity
+          import android.content.Context
           import android.content.Intent
           import android.content.pm.PackageManager
           import android.graphics.Bitmap
           import android.net.Uri
           import android.os.Build
           import android.os.Bundle
-          import android.os.SystemClock
           import android.provider.Settings
-          import android.view.MotionEvent
-          import android.view.ViewGroup
           import android.webkit.CookieManager
           import android.webkit.WebChromeClient
           import android.webkit.WebResourceRequest
@@ -1029,6 +1023,7 @@ jobs:
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.BackHandler
           import androidx.activity.compose.setContent
+          import androidx.browser.customtabs.CustomTabsIntent
           import androidx.compose.animation.AnimatedVisibility
           import androidx.compose.animation.fadeIn
           import androidx.compose.animation.fadeOut
@@ -1044,13 +1039,25 @@ jobs:
           import androidx.compose.foundation.text.KeyboardActions
           import androidx.compose.foundation.text.KeyboardOptions
           import androidx.compose.material.icons.Icons
-          import androidx.compose.material.icons.filled.*
-          import androidx.compose.material3.*
+          import androidx.compose.material.icons.filled.ArrowBack
+          import androidx.compose.material.icons.filled.ArrowForward
+          import androidx.compose.material.icons.filled.Bolt
+          import androidx.compose.material.icons.filled.CleaningServices
+          import androidx.compose.material.icons.filled.Close
+          import androidx.compose.material.icons.filled.OpenInBrowser
+          import androidx.compose.material.icons.filled.Refresh
+          import androidx.compose.material3.Button
+          import androidx.compose.material3.ButtonDefaults
+          import androidx.compose.material3.Icon
+          import androidx.compose.material3.IconButton
+          import androidx.compose.material3.LinearProgressIndicator
+          import androidx.compose.material3.Surface
+          import androidx.compose.material3.Text
+          import androidx.compose.material3.HorizontalDivider
           import androidx.compose.runtime.*
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
           import androidx.compose.ui.draw.clip
-          import androidx.compose.ui.draw.scale
           import androidx.compose.ui.draw.shadow
           import androidx.compose.ui.geometry.Offset
           import androidx.compose.ui.graphics.Brush
@@ -1066,184 +1073,141 @@ jobs:
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
           import androidx.compose.ui.viewinterop.AndroidView
-          import androidx.webkit.UserAgentMetadata
-          import androidx.webkit.WebSettingsCompat
-          import androidx.webkit.WebViewCompat
-          import androidx.webkit.WebViewFeature
           import com.google.android.gms.ads.AdRequest
           import com.google.android.gms.ads.AdSize
           import com.google.android.gms.ads.AdView
           import kotlinx.coroutines.delay
-          import kotlinx.coroutines.isActive
           import java.net.URLEncoder
           import kotlin.math.roundToInt
-
+          
+          private const val OFFICIAL_BLS_URL = "https://algeria.blsspainvisa.com/"
+          private const val BLS_HOST = "algeria.blsspainvisa.com"
+          
           class MainActivity : ComponentActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                      if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                          requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
-                      }
+          
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                      checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                  ) {
+                      requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
                   }
-
+          
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                       val alarmManager = getSystemService(AlarmManager::class.java)
                       if (!alarmManager.canScheduleExactAlarms()) {
                           try {
-                              val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                              startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
                                   data = Uri.parse("package:$packageName")
-                              }
-                              startActivity(intent)
-                          } catch (e: Exception) {}
+                              })
+                          } catch (_: Exception) {
+                              // Optional permission; the browser itself does not depend on it.
+                          }
                       }
                   }
-
-                  AdManager.loadAndShowAppOpenAdFirstTime(this)
+          
                   AlarmScheduler.scheduleAllAlarms(this)
-
+          
                   setContent {
                       ApexBrowserApp()
                   }
               }
-
-              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+          
+              override fun onRequestPermissionsResult(
+                  requestCode: Int,
+                  permissions: Array<out String>,
+                  grantResults: IntArray
+              ) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-                  if (requestCode == 1001 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                  if (requestCode == 1001 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                       AlarmScheduler.scheduleAllAlarms(this)
                   }
               }
           }
-
+          
           @SuppressLint("SetJavaScriptEnabled")
           @Composable
           fun ApexBrowserApp() {
               val context = LocalContext.current
               val keyboardController = LocalSoftwareKeyboardController.current
               val activity = context as? Activity
-
-              val initialUrl = RemoteConfigManager.defaultUrl
-
-              var currentUrl by remember { mutableStateOf(initialUrl) }
+          
+              var currentUrl by remember { mutableStateOf(OFFICIAL_BLS_URL) }
               var inputUrl by remember { mutableStateOf("") }
               var progress by remember { mutableStateOf(0f) }
               var isLoading by remember { mutableStateOf(false) }
               var canGoBack by remember { mutableStateOf(false) }
               var canGoForward by remember { mutableStateOf(false) }
-              var isDesktopMode by remember { mutableStateOf(false) }
-
               var webViewInstance by remember { mutableStateOf<WebView?>(null) }
-
+          
               var hudExpanded by remember { mutableStateOf(false) }
               var bubbleOffset by remember { mutableStateOf(Offset(40f, 250f)) }
-
-              var autoRefreshEnabled by remember { mutableStateOf(false) }
-              var autoRefreshInterval by remember { mutableStateOf(15) }
-              var countdownSeconds by remember { mutableStateOf(15) }
-
-              var autoClickerEnabled by remember { mutableStateOf(false) }
-              var clickIntervalMs by remember { mutableStateOf(1000L) }
-              var reticleOffset by remember { mutableStateOf(Offset(250f, 400f)) }
-              var isPulsing by remember { mutableStateOf(false) }
-
-              var buttonClickCount by remember { mutableIntStateOf(0) }
-
-              fun registerButtonClick(action: () -> Unit) {
-                  buttonClickCount++
-                  action()
-                  if (buttonClickCount % RemoteConfigManager.clicksBetweenInterstitials == 0) {
-                      if (activity != null) {
-                          AdManager.showGeneralInterstitial(activity) {}
+              var bannerAd by remember { mutableStateOf<AdView?>(null) }
+          
+              fun isBlsUrl(rawUrl: String): Boolean {
+                  return try {
+                      val host = Uri.parse(rawUrl).host?.lowercase() ?: return false
+                      host == BLS_HOST || host.endsWith(".$BLS_HOST")
+                  } catch (_: Exception) {
+                      false
+                  }
+              }
+          
+              fun openBlsInBrowser() {
+                  val uri = Uri.parse(if (isBlsUrl(currentUrl)) currentUrl else OFFICIAL_BLS_URL)
+                  try {
+                      CustomTabsIntent.Builder()
+                          .setShowTitle(true)
+                          .build()
+                          .launchUrl(context, uri)
+                  } catch (_: Exception) {
+                      try {
+                          context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                      } catch (_: Exception) {
+                          Toast.makeText(context, "لا يوجد متصفح متاح لفتح الموقع", Toast.LENGTH_SHORT).show()
                       }
                   }
               }
+          
+              LaunchedEffect(Unit) {
+              openBlsInBrowser()
+          }
 
-              val cleanMobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-              val cleanDesktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-
-              BackHandler(enabled = canGoBack) {
-                  registerButtonClick {
-                      webViewInstance?.let { if (it.canGoBack()) it.goBack() }
-                  }
-              }
-
-              LaunchedEffect(autoRefreshEnabled, autoRefreshInterval) {
-                  if (autoRefreshEnabled) {
-                      countdownSeconds = autoRefreshInterval
-                      while (isActive && autoRefreshEnabled) {
-                          delay(1000L)
-                          if (countdownSeconds > 1) {
-                              countdownSeconds -= 1
-                          } else {
-                              countdownSeconds = autoRefreshInterval
-                              webViewInstance?.reload()
-                          }
-                      }
-                  } else {
-                      countdownSeconds = autoRefreshInterval
-                  }
-              }
-
-              LaunchedEffect(autoClickerEnabled, clickIntervalMs, reticleOffset) {
-                  if (autoClickerEnabled) {
-                      while (isActive && autoClickerEnabled) {
-                          delay(clickIntervalMs)
-                          webViewInstance?.let { wv ->
-                              val downTime = SystemClock.uptimeMillis()
-                              val eventTime = SystemClock.uptimeMillis()
-                              val targetX = reticleOffset.x
-                              val targetY = reticleOffset.y
-
-                              val downEvent = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_DOWN, targetX, targetY, 0)
-                              val upEvent = MotionEvent.obtain(downTime, eventTime + 30, MotionEvent.ACTION_UP, targetX, targetY, 0)
-
-                              wv.dispatchTouchEvent(downEvent)
-                              wv.dispatchTouchEvent(upEvent)
-
-                              downEvent.recycle()
-                              upEvent.recycle()
-
-                              isPulsing = true
-                          }
-                      }
-                  }
-              }
-
-              LaunchedEffect(isPulsing) {
-                  if (isPulsing) {
-                      delay(120L)
-                      isPulsing = false
-                  }
-              }
-
-              LaunchedEffect(isDesktopMode) {
-                  webViewInstance?.let { wv ->
-                      wv.settings.userAgentString = if (isDesktopMode) cleanDesktopUA else cleanMobileUA
-                      wv.settings.useWideViewPort = isDesktopMode
-                      wv.reload()
-                  }
-              }
-
-              fun processAndLoadUrl(query: String) {
+          fun processAndLoadUrl(query: String) {
                   val trimmed = query.trim()
                   if (trimmed.isEmpty()) return
+          
                   val finalUrl = when {
-                      trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+                      trimmed.startsWith("https://", ignoreCase = true) ||
+                          trimmed.startsWith("http://", ignoreCase = true) -> trimmed
                       trimmed.contains(".") && !trimmed.contains(" ") -> "https://$trimmed"
-                      else -> {
-                          try {
-                              "https://www.google.com/search?q=" + URLEncoder.encode(trimmed, "UTF-8")
-                          } catch (e: Exception) {
-                              "https://www.google.com/search?q=$trimmed"
-                          }
-                      }
+                      else -> "https://www.google.com/search?q=" +
+                          URLEncoder.encode(trimmed, "UTF-8")
                   }
-                  inputUrl = if (finalUrl.contains("blsinternational.com")) "" else finalUrl
+          
+                  if (isBlsUrl(finalUrl)) {
+                      // BLS uses its own security/verification layer. Open the official
+                      // site in a normal browser/custom tab instead of disguising WebView.
+                      try {
+                          CustomTabsIntent.Builder()
+                              .setShowTitle(true)
+                              .build()
+                              .launchUrl(context, Uri.parse(finalUrl))
+                      } catch (_: Exception) {
+                          context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl)))
+                      }
+                      return
+                  }
+          
                   currentUrl = finalUrl
+                  inputUrl = finalUrl
                   webViewInstance?.loadUrl(finalUrl)
               }
-
+          
+              BackHandler(enabled = canGoBack) {
+                  webViewInstance?.goBack()
+              }
+          
               Box(
                   modifier = Modifier
                       .fillMaxSize()
@@ -1264,35 +1228,27 @@ jobs:
                                   verticalAlignment = Alignment.CenterVertically
                               ) {
                                   IconButton(
-                                      onClick = {
-                                          registerButtonClick {
-                                              webViewInstance?.let { if (it.canGoBack()) it.goBack() }
-                                          }
-                                      },
+                                      onClick = { webViewInstance?.goBack() },
                                       enabled = canGoBack
                                   ) {
                                       Icon(
-                                          imageVector = Icons.Default.ArrowBack,
+                                          Icons.Default.ArrowBack,
                                           contentDescription = "Back",
                                           tint = if (canGoBack) Color.White else Color.Gray
                                       )
                                   }
-
+          
                                   IconButton(
-                                      onClick = {
-                                          registerButtonClick {
-                                              webViewInstance?.let { if (it.canGoForward()) it.goForward() }
-                                          }
-                                      },
+                                      onClick = { webViewInstance?.goForward() },
                                       enabled = canGoForward
                                   ) {
                                       Icon(
-                                          imageVector = Icons.Default.ArrowForward,
+                                          Icons.Default.ArrowForward,
                                           contentDescription = "Forward",
                                           tint = if (canGoForward) Color.White else Color.Gray
                                       )
                                   }
-
+          
                                   Box(
                                       modifier = Modifier
                                           .weight(1f)
@@ -1302,13 +1258,6 @@ jobs:
                                           .padding(horizontal = 14.dp),
                                       contentAlignment = Alignment.CenterStart
                                   ) {
-                                      if (inputUrl.isEmpty()) {
-                                          Text(
-                                              text = "ابحث أو أدخل رابطاً...",
-                                              color = Color(0xFF94A3B8),
-                                              fontSize = 13.sp
-                                          )
-                                      }
                                       BasicTextField(
                                           value = inputUrl,
                                           onValueChange = { inputUrl = it },
@@ -1318,45 +1267,33 @@ jobs:
                                           keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                                           keyboardActions = KeyboardActions(onGo = {
                                               keyboardController?.hide()
-                                              registerButtonClick {
-                                                  processAndLoadUrl(inputUrl)
-                                              }
+                                              processAndLoadUrl(inputUrl)
                                           }),
                                           modifier = Modifier.fillMaxWidth()
                                       )
-                                  }
-
-                                  Spacer(modifier = Modifier.width(6.dp))
-
-                                  IconButton(
-                                      onClick = {
-                                          registerButtonClick {
-                                              if (isLoading) webViewInstance?.stopLoading() else webViewInstance?.reload()
-                                          }
+                                      if (inputUrl.isEmpty()) {
+                                          Text(
+                                              "أدخل رابطاً أو ابحث...",
+                                              color = Color(0xFF94A3B8),
+                                              fontSize = 13.sp
+                                          )
                                       }
-                                  ) {
+                                  }
+          
+                                  Spacer(modifier = Modifier.width(6.dp))
+          
+                                  IconButton(onClick = {
+                                      if (isLoading) webViewInstance?.stopLoading()
+                                      else webViewInstance?.reload()
+                                  }) {
                                       Icon(
-                                          imageVector = if (isLoading) Icons.Default.Close else Icons.Default.Refresh,
+                                          if (isLoading) Icons.Default.Close else Icons.Default.Refresh,
                                           contentDescription = "Reload",
                                           tint = Color(0xFF38BDF8)
                                       )
                                   }
-
-                                  IconButton(
-                                      onClick = {
-                                          registerButtonClick {
-                                              isDesktopMode = !isDesktopMode
-                                          }
-                                      }
-                                  ) {
-                                      Icon(
-                                          imageVector = if (isDesktopMode) Icons.Default.DesktopWindows else Icons.Default.PhoneAndroid,
-                                          contentDescription = "Toggle Desktop",
-                                          tint = if (isDesktopMode) Color(0xFF38BDF8) else Color.LightGray
-                                      )
-                                  }
                               }
-
+          
                               if (isLoading) {
                                   LinearProgressIndicator(
                                       progress = { progress },
@@ -1369,7 +1306,7 @@ jobs:
                               }
                           }
                       }
-
+          
                       Box(
                           modifier = Modifier
                               .weight(1f)
@@ -1378,168 +1315,92 @@ jobs:
                           AndroidView(
                               factory = { ctx ->
                                   WebView(ctx).apply {
-                                      layoutParams = ViewGroup.LayoutParams(
-                                          ViewGroup.LayoutParams.MATCH_PARENT,
-                                          ViewGroup.LayoutParams.MATCH_PARENT
-                                      )
-
-                                      // 1. منع إرسال هيدر X-Requested-With
-                                      if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
-                                          WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
-                                      }
-
-                                      // 2. تزييف هيدر Client Hints ليطابق Google Chrome بدلاً من Android WebView
-                                      if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
-                                          val brandChrome = UserAgentMetadata.BrandVersion.Builder()
-                                              .setBrand("Google Chrome")
-                                              .setMajorVersion("128")
-                                              .setFullVersion("128.0.6613.88")
-                                              .build()
-                                          val brandChromium = UserAgentMetadata.BrandVersion.Builder()
-                                              .setBrand("Chromium")
-                                              .setMajorVersion("128")
-                                              .setFullVersion("128.0.6613.88")
-                                              .build()
-                                          val brandNotABrand = UserAgentMetadata.BrandVersion.Builder()
-                                              .setBrand("Not_A Brand")
-                                              .setMajorVersion("24")
-                                              .setFullVersion("24.0.0.0")
-                                              .build()
-
-                                          val metadata = UserAgentMetadata.Builder()
-                                              .setBrandVersionList(listOf(brandNotABrand, brandChromium, brandChrome))
-                                              .setFullVersion("128.0.6613.88")
-                                              .setPlatform("Android")
-                                              .setPlatformVersion("14.0.0")
-                                              .setArchitecture("")
-                                              .setModel("K")
-                                              .setMobile(true)
-                                              .setBitness(64)
-                                              .setWow64(false)
-                                              .build()
-
-                                          WebSettingsCompat.setUserAgentMetadata(settings, metadata)
-                                      }
-
-                                      with(settings) {
+                                      settings.apply {
+                                          // Keep the real WebView identity. Do not spoof Chrome,
+                                          // Client Hints, navigator.webdriver, or request headers.
                                           javaScriptEnabled = true
                                           domStorageEnabled = true
                                           databaseEnabled = true
-                                          mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                          cacheMode = WebSettings.LOAD_DEFAULT
+                                          useWideViewPort = true
+                                          loadWithOverviewMode = false
                                           setSupportZoom(true)
                                           builtInZoomControls = true
                                           displayZoomControls = false
-                                          useWideViewPort = true
-                                          loadWithOverviewMode = true
-                                          cacheMode = WebSettings.LOAD_DEFAULT
-                                          userAgentString = cleanMobileUA
-                                          allowFileAccess = true
-                                          allowContentAccess = true
-                                          javaScriptCanOpenWindowsAutomatically = true
-                                          mediaPlaybackRequiresUserGesture = false
+                                          allowFileAccess = false
+                                          allowContentAccess = false
+                                          javaScriptCanOpenWindowsAutomatically = false
+                                          mediaPlaybackRequiresUserGesture = true
+                                          mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                       }
-
-                                      val cookieManager = CookieManager.getInstance()
-                                      cookieManager.setAcceptCookie(true)
-                                      cookieManager.setAcceptThirdPartyCookies(this, true)
-
-                                      // 3. سكربت تخفٍّ نقي وخالٍ من الفخاخ البرمجية
-                                      val stealthJs = """
-                                          (function() {
-                                              try {
-                                                  delete Object.getPrototypeOf(navigator).webdriver;
-                                                  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                                                  window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {} };
-                                                  Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'ar', 'en-US', 'en'] });
-                                              } catch (e) {}
-                                          })();
-                                      """.trimIndent()
-
-                                      if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                                          WebViewCompat.addDocumentStartJavaScript(this, stealthJs, setOf("*"))
-                                      }
-
+          
+                                      CookieManager.getInstance().setAcceptCookie(true)
+                                      CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
+          
                                       webViewClient = object : WebViewClient() {
-                                          override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                              return false
+                                          override fun shouldOverrideUrlLoading(
+                                              view: WebView?,
+                                              request: WebResourceRequest?
+                                          ): Boolean {
+                                              val url = request?.url?.toString() ?: return false
+                                              return if (isBlsUrl(url)) {
+                                                  try {
+                                                      CustomTabsIntent.Builder()
+                                                          .setShowTitle(true)
+                                                          .build()
+                                                          .launchUrl(context, Uri.parse(url))
+                                                  } catch (_: Exception) {
+                                                      try {
+                                                          context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                                      } catch (_: Exception) {
+                                                          Toast.makeText(context, "تعذر فتح الرابط", Toast.LENGTH_SHORT).show()
+                                                      }
+                                                  }
+                                                  true
+                                              } else {
+                                                  false
+                                              }
                                           }
-
-                                          override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+          
+                                          override fun onPageStarted(
+                                              view: WebView?,
+                                              url: String?,
+                                              favicon: Bitmap?
+                                          ) {
                                               super.onPageStarted(view, url, favicon)
                                               isLoading = true
                                               url?.let {
                                                   currentUrl = it
-                                                  inputUrl = if (it.contains("blsinternational.com")) "" else it
+                                                  inputUrl = if (isBlsUrl(it)) "" else it
                                               }
-                                              evaluateJavascript(stealthJs, null)
                                           }
-
+          
                                           override fun onPageFinished(view: WebView?, url: String?) {
                                               super.onPageFinished(view, url)
                                               isLoading = false
-                                              canGoBack = canGoBack()
-                                              canGoForward = canGoForward()
-                                              evaluateJavascript(stealthJs, null)
-                                              cookieManager.flush()
+                                              view?.let {
+                                                  canGoBack = it.canGoBack()
+                                                  canGoForward = it.canGoForward()
+                                              }
+                                              CookieManager.getInstance().flush()
                                           }
                                       }
-
+          
                                       webChromeClient = object : WebChromeClient() {
                                           override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                               progress = newProgress / 100f
                                               isLoading = newProgress < 100
                                           }
                                       }
-
-                                      loadUrl(currentUrl)
+          
+                                      loadUrl("https://www.google.com/")
                                       webViewInstance = this
                                   }
                               },
                               modifier = Modifier.fillMaxSize()
                           )
-
-                          if (autoClickerEnabled) {
-                              Box(
-                                  modifier = Modifier
-                                      .offset { IntOffset(reticleOffset.x.roundToInt(), reticleOffset.y.roundToInt()) }
-                                      .size(54.dp)
-                                      .pointerInput(Unit) {
-                                          detectDragGestures { change, dragAmount ->
-                                              change.consume()
-                                              reticleOffset += dragAmount
-                                          }
-                                      },
-                                  contentAlignment = Alignment.Center
-                              ) {
-                                  if (isPulsing) {
-                                      Box(
-                                          modifier = Modifier
-                                              .size(52.dp)
-                                              .scale(1.3f)
-                                              .clip(CircleShape)
-                                              .background(Color(0x55EF4444))
-                                      )
-                                  }
-
-                                  Box(
-                                      modifier = Modifier
-                                          .size(46.dp)
-                                          .clip(CircleShape)
-                                          .border(2.dp, Color(0xFFEF4444), CircleShape)
-                                          .background(Color(0x33EF4444)),
-                                      contentAlignment = Alignment.Center
-                                  ) {
-                                      Icon(
-                                          imageVector = Icons.Default.Adjust,
-                                          contentDescription = "Target Reticle",
-                                          tint = Color(0xFFEF4444),
-                                          modifier = Modifier.size(24.dp)
-                                      )
-                                  }
-                              }
-                          }
                       }
-
+          
                       if (RemoteConfigManager.adsEnabled && RemoteConfigManager.showBanner) {
                           AndroidView(
                               factory = { ctx ->
@@ -1547,6 +1408,7 @@ jobs:
                                       setAdSize(AdSize.BANNER)
                                       adUnitId = RemoteConfigManager.bannerAdId
                                       loadAd(AdRequest.Builder().build())
+                                      bannerAd = this
                                   }
                               },
                               modifier = Modifier
@@ -1555,18 +1417,14 @@ jobs:
                           )
                       }
                   }
-
+          
                   Box(
                       modifier = Modifier
                           .offset { IntOffset(bubbleOffset.x.roundToInt(), bubbleOffset.y.roundToInt()) }
                           .size(52.dp)
                           .shadow(12.dp, CircleShape)
                           .clip(CircleShape)
-                          .background(
-                              Brush.linearGradient(
-                                  listOf(Color(0xFF38BDF8), Color(0xFF2563EB))
-                              )
-                          )
+                          .background(Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF2563EB))))
                           .pointerInput(Unit) {
                               detectDragGestures { change, dragAmount ->
                                   change.consume()
@@ -1576,21 +1434,17 @@ jobs:
                           .clickable(
                               indication = null,
                               interactionSource = remember { MutableInteractionSource() }
-                          ) {
-                              registerButtonClick {
-                                  hudExpanded = !hudExpanded
-                              }
-                          },
+                          ) { hudExpanded = !hudExpanded },
                       contentAlignment = Alignment.Center
                   ) {
                       Icon(
-                          imageVector = if (hudExpanded) Icons.Default.Close else Icons.Default.Bolt,
+                          if (hudExpanded) Icons.Default.Close else Icons.Default.Bolt,
                           contentDescription = "HUD Toggle",
                           tint = Color.White,
                           modifier = Modifier.size(28.dp)
                       )
                   }
-
+          
                   AnimatedVisibility(
                       visible = hudExpanded,
                       enter = fadeIn(),
@@ -1613,31 +1467,38 @@ jobs:
                                   verticalAlignment = Alignment.CenterVertically
                               ) {
                                   Text(
-                                      text = "Apex Automation Panel",
+                                      "Apex Browser",
                                       color = Color(0xFF38BDF8),
                                       fontWeight = FontWeight.Bold,
                                       fontSize = 16.sp
                                   )
-                                  IconButton(onClick = {
-                                      registerButtonClick { hudExpanded = false }
-                                  }) {
+                                  IconButton(onClick = { hudExpanded = false }) {
                                       Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.LightGray)
                                   }
                               }
-
+          
                               HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
                               Spacer(modifier = Modifier.height(10.dp))
-
-                              // زر مسح الكاش والجلسة المحظورة بنقرة واحدة
+          
+                              Button(
+                                  onClick = { openBlsInBrowser() },
+                                  colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                  shape = RoundedCornerShape(10.dp),
+                                  modifier = Modifier.fillMaxWidth()
+                              ) {
+                                  Icon(Icons.Default.OpenInBrowser, contentDescription = null, tint = Color.White)
+                                  Spacer(modifier = Modifier.width(8.dp))
+                                  Text("فتح موقع BLS الرسمي في المتصفح", color = Color.White, fontSize = 13.sp)
+                              }
+          
+                              Spacer(modifier = Modifier.height(10.dp))
+          
                               Button(
                                   onClick = {
                                       webViewInstance?.let { wv ->
                                           wv.clearCache(true)
                                           wv.clearHistory()
-                                          CookieManager.getInstance().removeAllCookies(null)
-                                          CookieManager.getInstance().flush()
-                                          wv.reload()
-                                          Toast.makeText(context, "تم مسح الجلسة وتجديد الاتصال بنجاح!", Toast.LENGTH_SHORT).show()
+                                          Toast.makeText(context, "تم تنظيف بيانات WebView", Toast.LENGTH_SHORT).show()
                                       }
                                   },
                                   colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
@@ -1646,104 +1507,29 @@ jobs:
                               ) {
                                   Icon(Icons.Default.CleaningServices, contentDescription = null, tint = Color(0xFF38BDF8))
                                   Spacer(modifier = Modifier.width(8.dp))
-                                  Text("مسح الجلسة والكوكيز (فك الحظر)", color = Color.White, fontSize = 13.sp)
+                                  Text("تنظيف بيانات التصفح", color = Color.White, fontSize = 13.sp)
                               }
-
+          
                               Spacer(modifier = Modifier.height(10.dp))
-                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(10.dp))
-
-                              Row(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column {
-                                      Text(text = "Auto Refresh Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                      Text(
-                                          text = if (autoRefreshEnabled) "Next reload in ${countdownSeconds}s" else "Disabled",
-                                          color = if (autoRefreshEnabled) Color(0xFF4ADE80) else Color.Gray,
-                                          fontSize = 12.sp
-                                      )
-                                  }
-                                  Switch(
-                                      checked = autoRefreshEnabled,
-                                      onCheckedChange = { isChecked ->
-                                          registerButtonClick {
-                                              if (isChecked) {
-                                                  if (activity != null) {
-                                                      AdManager.showGeneralInterstitial(activity) {
-                                                          autoRefreshEnabled = true
-                                                      }
-                                                  } else {
-                                                      autoRefreshEnabled = true
-                                                  }
-                                              } else {
-                                                  autoRefreshEnabled = false
-                                              }
-                                          }
-                                      },
-                                      colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF38BDF8))
-                                  )
-                              }
-
-                              Slider(
-                                  value = autoRefreshInterval.toFloat(),
-                                  onValueChange = { autoRefreshInterval = it.roundToInt() },
-                                  valueRange = 5f..60f,
-                                  steps = 55,
-                                  enabled = autoRefreshEnabled
-                              )
-
-                              Spacer(modifier = Modifier.height(10.dp))
-                              HorizontalDivider(color = Color(0x22FFFFFF), thickness = 1.dp)
-                              Spacer(modifier = Modifier.height(10.dp))
-
-                              Row(
-                                  modifier = Modifier.fillMaxWidth(),
-                                  horizontalArrangement = Arrangement.SpaceBetween,
-                                  verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column {
-                                      Text(text = "Auto Clicker Engine", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                      Text(
-                                          text = if (autoClickerEnabled) "Interval: ${clickIntervalMs}ms (Active)" else "Reticle target inactive",
-                                          color = if (autoClickerEnabled) Color(0xFFEF4444) else Color.Gray,
-                                          fontSize = 12.sp
-                                      )
-                                  }
-                                  Switch(
-                                      checked = autoClickerEnabled,
-                                      onCheckedChange = { isChecked ->
-                                          registerButtonClick {
-                                              if (isChecked) {
-                                                  if (activity != null) {
-                                                      AdManager.showAdForAutoClick(activity) {
-                                                          autoClickerEnabled = true
-                                                      }
-                                                  } else {
-                                                      autoClickerEnabled = true
-                                                  }
-                                              } else {
-                                                  autoClickerEnabled = false
-                                              }
-                                          }
-                                      },
-                                      colors = SwitchDefaults.colors(
-                                          checkedThumbColor = Color(0xFFEF4444),
-                                          checkedTrackColor = Color(0x66EF4444)
-                                      )
-                                  )
-                              }
-
-                              Slider(
-                                  value = clickIntervalMs.toFloat(),
-                                  onValueChange = { clickIntervalMs = it.toLong() },
-                                  valueRange = 200f..4000f,
-                                  steps = 38,
-                                  enabled = autoClickerEnabled
+                              Text(
+                                  "تم تعطيل Auto Clicker وAuto Refresh وتزييف الهوية. عند فتح BLS سيُستخدم المتصفح الرسمي/Custom Tab لتجنب مشاكل WebView الأمنية.",
+                                  color = Color(0xFFCBD5E1),
+                                  fontSize = 12.sp,
+                                  lineHeight = 18.sp
                               )
                           }
+                      }
+                  }
+              }
+          
+              DisposableEffect(Unit) {
+                  onDispose {
+                      bannerAd?.destroy()
+                      webViewInstance?.apply {
+                          stopLoading()
+                          webViewClient = null
+                          webChromeClient = null
+                          destroy()
                       }
                   }
               }
